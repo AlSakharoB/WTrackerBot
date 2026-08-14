@@ -1,0 +1,15 @@
+Alembic migration environment for the nutrition bot.
+
+Production uses the Compose chain `db -> backup -> migrate -> bot`:
+
+1. checks database connectivity;
+2. creates a custom-format `pg_dump` using the PostgreSQL 16 backup image;
+3. verifies the dump with the matching `pg_restore --list` and records SHA-256;
+4. makes `migrate` verify the backup marker and checksum;
+5. runs `alembic upgrade head` under a PostgreSQL advisory lock;
+6. verifies that the database revision equals the code head.
+
+The bot process never migrates or downgrades the database. Its startup guard
+blocks polling when the revision is BEHIND or AHEAD_UNKNOWN. Schema changes
+should be transactional where PostgreSQL permits it and use expand/contract for
+changes that cannot remain compatible during a rolling application update.

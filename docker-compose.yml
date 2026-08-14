@@ -1,0 +1,118 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-file: "5"
+    max-size: 10m
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nutrition_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-nutrition_bot}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backup:
+    image: ${BACKUP_IMAGE_REPOSITORY:-nutrition-bot-backup}:postgres16
+    build:
+      context: ./docker
+      dockerfile: backup.Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MIGRATION_BACKUP_DIR: /backups
+      MIGRATION_BACKUP_MARKER: /backups/.last-verified
+      PGDATABASE: ${POSTGRES_DB:-nutrition_bot}
+      PGHOST: db
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-postgres}
+    logging: *default-logging
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - postgres_backups:/backups
+
+  migrate:
+    image: ${BOT_IMAGE_REPOSITORY:-nutrition-bot}:${APP_VERSION:-0.1.0}-${GIT_COMMIT_SHA:-unknown}
+    build:
+      context: .
+      target: runtime
+    command: ["python", "-m", "scripts.migrate"]
+    depends_on:
+      backup:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/nutrition_bot}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+      MIGRATION_BACKUP_DIR: ${MIGRATION_BACKUP_DIR:-/backups}
+      MIGRATION_BACKUP_MARKER: ${MIGRATION_BACKUP_MARKER:-/backups/.last-verified}
+    logging: *default-logging
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - postgres_backups:/backups
+
+  bot:
+    image: ${BOT_IMAGE_REPOSITORY:-nutrition-bot}:${APP_VERSION:-0.1.0}-${GIT_COMMIT_SHA:-unknown}
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/nutrition_bot}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    init: true
+    logging: *default-logging
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+
+volumes:
+  postgres_backups:
+  postgres_data:
