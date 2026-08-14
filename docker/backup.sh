@@ -23,4 +23,10 @@ printf '%s %s\n' "$filename" "$checksum" >"$marker_temporary_path"
 mv "$marker_temporary_path" "$marker"
 chmod 0444 "$backup_path" "$marker"
 
+ls -1t "$backup_dir"/*.dump \
+    | awk 'NR > 2' \
+    | while IFS= read -r expired_backup; do
+        rm -f "$expired_backup"
+    done
+
 printf 'Verified PostgreSQL 16 backup: %s\n' "$filename"

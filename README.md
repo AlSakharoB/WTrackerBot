@@ -112,9 +112,10 @@ Telegram-бот для учета питания, КБЖУ, веса и целе
 
 Compose выполняет строгую цепочку `db -> backup -> migrate -> bot`. Одноразовый
 сервис `backup` на образе PostgreSQL 16 создаёт и проверяет dump через
-`pg_dump`/`pg_restore`, а также записывает SHA-256 marker. Сервис `migrate`
-проверяет marker, применяет Alembic под advisory lock и сверяет итоговую revision.
-Только после их успешного завершения запускается polling Telegram.
+`pg_dump`/`pg_restore`, записывает SHA-256 marker и сохраняет только два последних
+успешных dump. Сервис `migrate` проверяет marker, применяет Alembic под advisory
+lock и сверяет итоговую revision. Только после их успешного завершения
+запускается polling Telegram.
 Проверка состояния и логов:
 
 ```bash
@@ -265,6 +266,8 @@ volume `postgres_backups`. Затем `migrate` проверяет SHA-256 и в
 `alembic upgrade head`. Ошибка backup, checksum, миграции или итоговой проверки
 revision завершает соответствующий сервис с ненулевым кодом, поэтому бот не
 запускается.
+После успешной проверки нового dump ротация оставляет в volume два последних
+backup-файла. Marker всегда указывает на самый новый из них.
 Production не позволяет `ALLOW_MIGRATION_WITHOUT_BACKUP=true`; этот флаг
 допустим только для явно выбранного development-окружения.
 
@@ -303,7 +306,21 @@ docker compose -f docker-compose.test.yml up \
 ```
 
 Скрипт проверяет exit code каждого шага: build, production-like startup,
-завершение migrate service и итоговый healthcheck.
+завершение migrate service и итоговый healthcheck. Только после успешного
+healthcheck он выводит логи backup/migrate, удаляет завершенные одноразовые
+контейнеры, старые неиспользуемые образы, сети и весь build cache через
+`docker system prune -a -f`. Volumes PostgreSQL и backup не удаляются.
+
+Очистка включена по умолчанию, чтобы Docker не заполнял небольшой production
+SSD. Для разовой диагностики с сохранением контейнеров и build cache ее можно
+отключить:
+
+```bash
+DOCKER_PRUNE_AFTER_DEPLOY=false ./scripts/deploy.sh
+```
+
+После автоматической очистки следующий deploy может собираться дольше, потому
+что Python-зависимости будут загружены заново.
 
 Автоматического downgrade нет. Rollback на прежний тег образа разрешён только
 когда его `Expected head` совпадает с текущей revision БД. Для несовпадающей

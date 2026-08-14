@@ -140,6 +140,7 @@ def test_compose_orders_db_migrate_bot_and_persists_backups() -> None:
     project_root = Path(__file__).parents[2]
     compose = project_root.joinpath("docker-compose.yml").read_text()
     backup_dockerfile = project_root.joinpath("docker/backup.Dockerfile").read_text()
+    backup_script = project_root.joinpath("docker/backup.sh").read_text()
     deploy = project_root.joinpath("scripts/deploy.sh").read_text()
 
     assert "migrate:" in compose
@@ -148,5 +149,13 @@ def test_compose_orders_db_migrate_bot_and_persists_backups() -> None:
     assert "postgres_backups:/backups" in compose
     assert 'command: ["python", "-m", "scripts.migrate"]' in compose
     assert "postgres:16-alpine" in backup_dockerfile
+    assert "awk 'NR > 2'" in backup_script
+    assert 'rm -f "$expired_backup"' in backup_script
     assert "docker compose" in deploy
     assert "scripts/healthcheck.py" in deploy
+    assert "docker system prune -a -f" in deploy
+    assert "rm -f backup migrate" in deploy
+    assert deploy.index("scripts/healthcheck.py") < deploy.index(
+        "docker system prune -a -f"
+    )
+    assert "--volumes" not in deploy
