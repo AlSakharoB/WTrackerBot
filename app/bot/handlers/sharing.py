@@ -26,6 +26,7 @@ from app.db.models.ingredient import Ingredient
 from app.db.models.share import ShareImportStatus
 from app.db.models.user import User
 from app.exceptions import NotFoundError, ValidationError
+from app.repositories.dishes import DishRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.shares import ShareRepository
 from app.services.action_lock import generate_action_token
@@ -59,6 +60,7 @@ def sharing_service(
         link_ttl_days=share_link_ttl_days,
         limits=share_payload_limits,
         ingredient_repository=IngredientRepository(session),
+        dish_repository=DishRepository(session),
     )
 
 
@@ -150,7 +152,26 @@ async def handle_ingredient_share_start(
     )
     try:
         access = await service.resolve_ingredient_token(token, current_user.id)
-    except (InvalidShareLinkError, ExpiredShareLinkError) as error:
+    except InvalidShareLinkError:
+        try:
+            dish_access = await service.resolve_dish_token(token, current_user.id)
+        except (InvalidShareLinkError, ExpiredShareLinkError) as error:
+            await message.answer(
+                escape(str(error)),
+                reply_markup=build_import_cancelled_keyboard(),
+            )
+            return
+        from app.bot.handlers.sharing_dish import handle_dish_share_start
+
+        await handle_dish_share_start(
+            message,
+            state,
+            current_user,
+            dish_access,
+            service,
+        )
+        return
+    except ExpiredShareLinkError as error:
         await message.answer(
             escape(str(error)),
             reply_markup=build_import_cancelled_keyboard(),

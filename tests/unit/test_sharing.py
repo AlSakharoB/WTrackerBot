@@ -137,6 +137,21 @@ def test_payload_rejects_duplicate_and_dangling_local_keys() -> None:
             ],
         )
 
+    with pytest.raises(PydanticValidationError, match="duplicate"):
+        DishSharePayload(
+            ingredients=[ingredient()],
+            dishes=[
+                SharedDish(
+                    key="d1",
+                    name="Блюдо",
+                    components=[
+                        SharedDishComponent(ingredient_key="i1", grams=Decimal("100")),
+                        SharedDishComponent(ingredient_key="i1", grams=Decimal("200")),
+                    ],
+                )
+            ],
+        )
+
 
 @pytest.mark.parametrize(
     "limits",

@@ -161,3 +161,37 @@ class ShareRepository:
         if completed is None:  # pragma: no cover - defensive database invariant
             raise RuntimeError("Share import could not be completed")
         return completed
+
+    async def complete_dish_import(
+        self,
+        import_id: int,
+        *,
+        created_ingredients_count: int,
+        reused_ingredients_count: int,
+        skipped_ingredients_count: int,
+        created_dishes_count: int,
+        skipped_dishes_count: int,
+        completed_at: datetime,
+    ) -> ShareImport:
+        statement = (
+            update(ShareImport)
+            .where(
+                ShareImport.id == import_id,
+                ShareImport.status == ShareImportStatus.PROCESSING,
+            )
+            .values(
+                status=ShareImportStatus.COMPLETED,
+                created_ingredients_count=created_ingredients_count,
+                reused_ingredients_count=reused_ingredients_count,
+                skipped_ingredients_count=skipped_ingredients_count,
+                created_dishes_count=created_dishes_count,
+                skipped_dishes_count=skipped_dishes_count,
+                completed_at=completed_at,
+            )
+            .returning(ShareImport)
+            .execution_options(populate_existing=True)
+        )
+        completed = await self._session.scalar(statement)
+        if completed is None:  # pragma: no cover - defensive database invariant
+            raise RuntimeError("Share import could not be completed")
+        return completed

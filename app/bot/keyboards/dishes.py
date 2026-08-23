@@ -21,6 +21,7 @@ DISH_EDITOR_CHANGE = "dish_editor:change"
 DISH_EDITOR_REMOVE = "dish_editor:remove"
 DISH_EDITOR_INGREDIENT_SEARCH = "dish_editor:ingredient_search"
 DISH_EDITOR_CANCEL = "dish_editor:cancel"
+SHARE_DISHES_SELECT = "share:dishes:select"
 
 
 class DishesPageCallback(CallbackData, prefix="dishes"):
@@ -59,6 +60,12 @@ def build_dishes_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🔎 Найти", callback_data=DISHES_SEARCH),
                 InlineKeyboardButton(text="📋 Все блюда", callback_data=DISHES_LIST),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📤 Поделиться несколькими",
+                    callback_data=SHARE_DISHES_SELECT,
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -132,6 +139,16 @@ def build_dish_detail_keyboard(dish_id: int, page: int) -> InlineKeyboardMarkup:
                     callback_data=DiarySourceCallback(
                         entry_type=DiaryEntryType.DISH,
                         source_id=dish_id,
+                    ).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📤 Поделиться",
+                    callback_data=DishCallback(
+                        action="share",
+                        dish_id=dish_id,
+                        page=page,
                     ).pack(),
                 )
             ],

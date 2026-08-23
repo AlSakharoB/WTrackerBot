@@ -99,6 +99,23 @@ class DishService:
         )
         return self._build_details(dish, validated)
 
+    async def create_import_copy(
+        self,
+        user_id: int,
+        name: str,
+        components: list[DishComponentData],
+    ) -> DishDetails:
+        """Create an explicitly approved import copy without fuzzy rejection."""
+        normalized_name, name_key = normalize_dish_name(name)
+        validated = await self._validate_components(user_id, components)
+        dish = await self._repository.create(
+            user_id=user_id,
+            name=normalized_name,
+            name_normalized=name_key,
+            components=[(item.ingredient_id, item.grams) for item in components],
+        )
+        return self._build_details(dish, validated)
+
     async def check_name_available(self, user_id: int, name: str) -> None:
         _, name_normalized = normalize_dish_name(name)
         await self._raise_if_similar_name_exists(user_id, name_normalized)

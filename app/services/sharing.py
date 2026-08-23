@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 
+from app.db.models.dish import Dish
 from app.db.models.ingredient import Ingredient
 from app.db.models.share import (
     ShareImport,
@@ -13,6 +14,7 @@ from app.db.models.share import (
     SharePackageType,
 )
 from app.exceptions import DuplicateError, NotFoundError, ValidationError
+from app.repositories.dishes import DishRecord, DishRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.shares import (
     ShareRepository,
@@ -23,11 +25,20 @@ from app.search import (
     names_have_different_numbers,
     normalize_search_text,
 )
+from app.services.dishes import DishComponentData, DishDetails, DishService
 from app.services.ingredients import CreateIngredientData, IngredientService
+from app.services.nutrition import (
+    DishNutritionValues,
+    NutritionComponent,
+    NutritionService,
+    NutritionValues,
+)
 from app.sharing.links import build_share_deep_link, build_telegram_share_url
 from app.sharing.payloads import (
     DishSharePayload,
     IngredientSharePayload,
+    SharedDish,
+    SharedDishComponent,
     SharedIngredient,
     SharePayload,
     SharePayloadLimitError,
@@ -72,6 +83,19 @@ class BatchIngredientAction(StrEnum):
     REUSE = "reuse"
     COPY_WITH_GENERATED_NAME = "copy_with_generated_name"
     SKIP = "skip"
+
+
+class DishConflictType(StrEnum):
+    NEW = "new"
+    NAME_CONFLICT = "name_conflict"
+    SIMILAR_CONFLICT = "similar_conflict"
+
+
+class DishImportAction(StrEnum):
+    CREATE = "create"
+    CREATE_COPY = "create_copy"
+    SKIP = "skip"
+    UNRESOLVED = "unresolved"
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +189,151 @@ class BatchIngredientImportResult:
     already_completed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class DishPackageAccess:
+    package: SharePackage
+    payload: DishSharePayload
+    previous_import: ShareImport | None
+    is_owner: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DishPreflight:
+    dish: SharedDish
+    conflict_type: DishConflictType
+    existing: Dish | None
+    ingredients: BatchIngredientPreflight
+
+
+@dataclass(frozen=True, slots=True)
+class DishNamePreflight:
+    dish: SharedDish
+    conflict_type: DishConflictType
+    existing: Dish | None
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDishPreflight:
+    dishes: tuple[DishNamePreflight, ...]
+    ingredients: BatchIngredientPreflight
+
+    @property
+    def dish_conflict_count(self) -> int:
+        return sum(
+            item.conflict_type is not DishConflictType.NEW for item in self.dishes
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DishIngredientPlanItem:
+    preflight: IngredientPreflight
+    action: BatchIngredientAction
+
+
+@dataclass(frozen=True, slots=True)
+class DishImportPlan:
+    dish: SharedDish
+    dish_conflict_type: DishConflictType
+    dish_action: DishImportAction
+    existing_dish: Dish | None
+    ingredients: tuple[DishIngredientPlanItem, ...]
+
+    @property
+    def unresolved_ingredients(self) -> tuple[DishIngredientPlanItem, ...]:
+        return tuple(
+            item
+            for item in self.ingredients
+            if item.action is BatchIngredientAction.SKIP
+        )
+
+    @property
+    def uses_changed_existing_ingredients(self) -> bool:
+        return any(
+            item.action is BatchIngredientAction.REUSE
+            and item.preflight.conflict_type
+            in {
+                IngredientConflictType.NAME_CONFLICT,
+                IngredientConflictType.SIMILAR_CONFLICT,
+            }
+            for item in self.ingredients
+        )
+
+    @property
+    def can_import(self) -> bool:
+        if self.dish_action is DishImportAction.SKIP:
+            return True
+        return (
+            self.dish_action in {DishImportAction.CREATE, DishImportAction.CREATE_COPY}
+            and not self.unresolved_ingredients
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DishImportResult:
+    import_record: ShareImport
+    plan: DishImportPlan
+    dish: DishDetails | None
+    already_completed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDishIngredientPlanItem:
+    preflight: IngredientPreflight
+    action: BatchIngredientAction
+    required: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDishPlanItem:
+    preflight: DishNamePreflight
+    action: DishImportAction
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDishImportPlan:
+    ingredients: tuple[BatchDishIngredientPlanItem, ...]
+    dishes: tuple[BatchDishPlanItem, ...]
+
+    @property
+    def unresolved_ingredients(self) -> tuple[BatchDishIngredientPlanItem, ...]:
+        return tuple(
+            item
+            for item in self.ingredients
+            if item.required and item.action is BatchIngredientAction.SKIP
+        )
+
+    @property
+    def unresolved_dishes(self) -> tuple[BatchDishPlanItem, ...]:
+        return tuple(
+            item for item in self.dishes if item.action is DishImportAction.UNRESOLVED
+        )
+
+    @property
+    def can_import(self) -> bool:
+        return not self.unresolved_ingredients and not self.unresolved_dishes
+
+    @property
+    def uses_changed_existing_ingredients(self) -> bool:
+        return any(
+            item.required
+            and item.action is BatchIngredientAction.REUSE
+            and item.preflight.conflict_type
+            in {
+                IngredientConflictType.NAME_CONFLICT,
+                IngredientConflictType.SIMILAR_CONFLICT,
+            }
+            for item in self.ingredients
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDishImportResult:
+    import_record: ShareImport
+    plan: BatchDishImportPlan
+    dishes: tuple[DishDetails, ...]
+    already_completed: bool = False
+
+
 class SharingService:
     def __init__(
         self,
@@ -174,6 +343,7 @@ class SharingService:
         link_ttl_days: int,
         limits: SharePayloadLimits,
         ingredient_repository: IngredientRepository | None = None,
+        dish_repository: DishRepository | None = None,
         token_factory: Callable[[], str] = generate_share_token,
     ) -> None:
         self._repository = repository
@@ -181,6 +351,7 @@ class SharingService:
         self._link_ttl_days = link_ttl_days
         self._limits = limits
         self._ingredient_repository = ingredient_repository
+        self._dish_repository = dish_repository
         self._token_factory = token_factory
 
     async def create_ingredient_package(
@@ -260,6 +431,58 @@ class SharingService:
             ),
         )
 
+    async def create_dish_package(
+        self,
+        owner_user_id: int,
+        dish_id: int,
+    ) -> CreatedSharePackage:
+        record = await self._require_dish_repository().get_by_id(
+            dish_id,
+            owner_user_id,
+        )
+        if record is None:
+            raise NotFoundError("Блюдо не найдено.")
+        payload = self._build_dish_payload(owner_user_id, [record])
+        return await self.create_package(
+            owner_user_id,
+            payload,
+            share_text=(
+                f"Делюсь блюдом «{record.dish.name}». "
+                "Откройте ссылку, чтобы добавить рецепт в бот."
+            ),
+        )
+
+    async def create_dish_batch_package(
+        self,
+        owner_user_id: int,
+        dish_ids: list[int],
+    ) -> CreatedSharePackage:
+        if not dish_ids:
+            raise ValidationError("Выберите хотя бы одно блюдо.")
+        if len(dish_ids) != len(set(dish_ids)):
+            raise ValidationError("Одно блюдо нельзя выбрать дважды.")
+        if len(dish_ids) > self._limits.max_items:
+            raise ValidationError(
+                f"Можно выбрать не более {self._limits.max_items} блюд."
+            )
+        records = await self._require_dish_repository().get_by_ids(
+            set(dish_ids),
+            owner_user_id,
+        )
+        by_id = {record.dish.id: record for record in records}
+        if len(by_id) != len(dish_ids):
+            raise NotFoundError("Одно из выбранных блюд удалено или недоступно.")
+        ordered = [by_id[dish_id] for dish_id in dish_ids]
+        payload = self._build_dish_payload(owner_user_id, ordered)
+        return await self.create_package(
+            owner_user_id,
+            payload,
+            share_text=(
+                f"Делюсь набором блюд ({len(ordered)}). "
+                "Откройте ссылку, чтобы добавить рецепты в бот."
+            ),
+        )
+
     async def create_package(
         self,
         owner_user_id: int,
@@ -327,6 +550,22 @@ class SharingService:
             now=now,
         )
 
+    async def resolve_dish_token(
+        self,
+        token: str,
+        recipient_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> DishPackageAccess:
+        if not is_valid_share_token(token):
+            raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
+        package = await self._repository.get_by_token_hash(hash_share_token(token))
+        return await self._build_dish_access(
+            package,
+            recipient_user_id,
+            now=now,
+        )
+
     async def get_ingredient_package(
         self,
         package_id: int,
@@ -336,6 +575,20 @@ class SharingService:
     ) -> IngredientPackageAccess:
         package = await self._repository.get_by_id(package_id)
         return await self._build_ingredient_access(
+            package,
+            recipient_user_id,
+            now=now,
+        )
+
+    async def get_dish_package(
+        self,
+        package_id: int,
+        recipient_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> DishPackageAccess:
+        package = await self._repository.get_by_id(package_id)
+        return await self._build_dish_access(
             package,
             recipient_user_id,
             now=now,
@@ -394,6 +647,429 @@ class SharingService:
             for incoming in payload.ingredients
         ]
         return BatchIngredientPreflight(tuple(items))
+
+    async def preflight_dish(
+        self,
+        recipient_user_id: int,
+        payload: DishSharePayload,
+    ) -> DishPreflight:
+        if len(payload.dishes) != 1:
+            raise InvalidShareLinkError("Ссылка не содержит одно блюдо.")
+        dish = payload.dishes[0]
+        dish_preflight = await self._preflight_dish_name(recipient_user_id, dish)
+        ingredient_preflight = await self.preflight_ingredient_batch(
+            recipient_user_id,
+            IngredientSharePayload(ingredients=payload.ingredients),
+        )
+        return DishPreflight(
+            dish=dish,
+            conflict_type=dish_preflight.conflict_type,
+            existing=dish_preflight.existing,
+            ingredients=ingredient_preflight,
+        )
+
+    async def preflight_dish_batch(
+        self,
+        recipient_user_id: int,
+        payload: DishSharePayload,
+    ) -> BatchDishPreflight:
+        dishes = tuple(
+            [
+                await self._preflight_dish_name(recipient_user_id, dish)
+                for dish in payload.dishes
+            ]
+        )
+        ingredients = await self.preflight_ingredient_batch(
+            recipient_user_id,
+            IngredientSharePayload(ingredients=payload.ingredients),
+        )
+        return BatchDishPreflight(dishes=dishes, ingredients=ingredients)
+
+    async def _preflight_dish_name(
+        self,
+        recipient_user_id: int,
+        dish: SharedDish,
+    ) -> DishNamePreflight:
+        normalized_name = normalize_search_text(dish.name)
+        candidates = await self._require_dish_repository().find_similar_names(
+            recipient_user_id,
+            normalized_name,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        existing = next(
+            (
+                candidate
+                for candidate in candidates
+                if not names_have_different_numbers(
+                    normalized_name,
+                    candidate.name_normalized,
+                )
+            ),
+            None,
+        )
+        if existing is None:
+            conflict_type = DishConflictType.NEW
+        elif existing.name_normalized == normalized_name:
+            conflict_type = DishConflictType.NAME_CONFLICT
+        else:
+            conflict_type = DishConflictType.SIMILAR_CONFLICT
+        return DishNamePreflight(
+            dish=dish,
+            conflict_type=conflict_type,
+            existing=existing,
+        )
+
+    async def build_dish_batch_import_plan(
+        self,
+        recipient_user_id: int,
+        payload: DishSharePayload,
+        ingredient_decisions: dict[str, str],
+        dish_decisions: dict[str, str],
+    ) -> BatchDishImportPlan:
+        preflight = await self.preflight_dish_batch(recipient_user_id, payload)
+        dish_items: list[BatchDishPlanItem] = []
+        for item in preflight.dishes:
+            requested = dish_decisions.get(item.dish.key)
+            if requested == DishImportAction.SKIP.value:
+                action = DishImportAction.SKIP
+            elif item.conflict_type is DishConflictType.NEW:
+                action = DishImportAction.CREATE
+            elif requested == DishImportAction.CREATE_COPY.value:
+                action = DishImportAction.CREATE_COPY
+            else:
+                action = DishImportAction.UNRESOLVED
+            dish_items.append(BatchDishPlanItem(item, action))
+
+        required_keys = {
+            component.ingredient_key
+            for item in dish_items
+            if item.action in {DishImportAction.CREATE, DishImportAction.CREATE_COPY}
+            for component in item.preflight.dish.components
+        }
+        ingredient_items: list[BatchDishIngredientPlanItem] = []
+        for item in preflight.ingredients.items:
+            required = item.incoming.key in required_keys
+            if not required:
+                action = BatchIngredientAction.SKIP
+            elif item.conflict_type is IngredientConflictType.NEW:
+                action = BatchIngredientAction.CREATE
+            elif item.conflict_type is IngredientConflictType.EXACT_SAME:
+                action = BatchIngredientAction.REUSE
+            else:
+                requested = ingredient_decisions.get(item.incoming.key)
+                action = (
+                    BatchIngredientAction(requested)
+                    if requested
+                    in {
+                        BatchIngredientAction.REUSE.value,
+                        BatchIngredientAction.COPY_WITH_GENERATED_NAME.value,
+                    }
+                    else BatchIngredientAction.SKIP
+                )
+            ingredient_items.append(BatchDishIngredientPlanItem(item, action, required))
+        return BatchDishImportPlan(
+            ingredients=tuple(ingredient_items),
+            dishes=tuple(dish_items),
+        )
+
+    async def import_dish_batch(
+        self,
+        package_id: int,
+        recipient_user_id: int,
+        ingredient_decisions: dict[str, str],
+        dish_decisions: dict[str, str],
+        *,
+        now: datetime | None = None,
+    ) -> BatchDishImportResult:
+        completed_at = now or datetime.now(UTC)
+        access = await self.get_dish_package(
+            package_id,
+            recipient_user_id,
+            now=completed_at,
+        )
+        if access.is_owner:
+            raise ValidationError("Нельзя импортировать собственную ссылку.")
+        plan = await self.build_dish_batch_import_plan(
+            recipient_user_id,
+            access.payload,
+            ingredient_decisions,
+            dish_decisions,
+        )
+        if (
+            access.previous_import is not None
+            and access.previous_import.status == ShareImportStatus.COMPLETED
+        ):
+            return BatchDishImportResult(
+                access.previous_import,
+                plan,
+                (),
+                already_completed=True,
+            )
+        if not plan.can_import:
+            raise ValidationError("Сначала разрешите все конфликты импорта.")
+
+        import_record, claimed = await self._repository.claim_import(
+            package_id,
+            recipient_user_id,
+        )
+        if not claimed:
+            if import_record.status == ShareImportStatus.PROCESSING:
+                raise ValidationError(
+                    "Этот импорт уже обрабатывается. Повторите проверку чуть позже."
+                )
+            return BatchDishImportResult(
+                import_record,
+                plan,
+                (),
+                already_completed=True,
+            )
+
+        ingredient_mapping: dict[str, Ingredient] = {}
+        created_ingredients = 0
+        reused_ingredients = 0
+        skipped_ingredients = 0
+        for item in plan.ingredients:
+            if not item.required:
+                skipped_ingredients += 1
+                continue
+            if item.action is BatchIngredientAction.CREATE:
+                ingredient = await self._create_imported_ingredient(
+                    recipient_user_id,
+                    item.preflight.incoming,
+                )
+                created_ingredients += 1
+            elif item.action is BatchIngredientAction.REUSE:
+                ingredient = item.preflight.existing
+                if ingredient is None:
+                    raise ValidationError(
+                        "План импорта устарел. Откройте ссылку заново."
+                    )
+                reused_ingredients += 1
+            elif item.action is BatchIngredientAction.COPY_WITH_GENERATED_NAME:
+                ingredient = await self._create_unique_copy(
+                    recipient_user_id,
+                    item.preflight.incoming,
+                )
+                created_ingredients += 1
+            else:  # pragma: no cover - guarded by plan.can_import
+                raise ValidationError("Сначала разрешите все конфликты импорта.")
+            ingredient_mapping[item.preflight.incoming.key] = ingredient
+
+        created_dishes: list[DishDetails] = []
+        skipped_dishes = 0
+        dish_service = DishService(self._require_dish_repository())
+        for item in plan.dishes:
+            if item.action is DishImportAction.SKIP:
+                skipped_dishes += 1
+                continue
+            component_data = [
+                DishComponentData(
+                    ingredient_id=ingredient_mapping[component.ingredient_key].id,
+                    grams=component.grams,
+                )
+                for component in item.preflight.dish.components
+            ]
+            component_ids = [component.ingredient_id for component in component_data]
+            if len(component_ids) != len(set(component_ids)):
+                raise ValidationError(
+                    "Несколько компонентов сопоставлены одному ингредиенту. "
+                    "Выберите отдельные копии."
+                )
+            if item.action is DishImportAction.CREATE_COPY:
+                details = await self._create_unique_dish_copy(
+                    recipient_user_id,
+                    item.preflight.dish.name,
+                    component_data,
+                )
+            else:
+                details = await dish_service.create(
+                    recipient_user_id,
+                    item.preflight.dish.name,
+                    component_data,
+                )
+            created_dishes.append(details)
+
+        completed = await self._repository.complete_dish_import(
+            import_record.id,
+            created_ingredients_count=created_ingredients,
+            reused_ingredients_count=reused_ingredients,
+            skipped_ingredients_count=skipped_ingredients,
+            created_dishes_count=len(created_dishes),
+            skipped_dishes_count=skipped_dishes,
+            completed_at=completed_at,
+        )
+        return BatchDishImportResult(completed, plan, tuple(created_dishes))
+
+    async def build_dish_import_plan(
+        self,
+        recipient_user_id: int,
+        payload: DishSharePayload,
+        ingredient_decisions: dict[str, str],
+        dish_decision: str | None,
+    ) -> DishImportPlan:
+        preflight = await self.preflight_dish(recipient_user_id, payload)
+        ingredient_items: list[DishIngredientPlanItem] = []
+        for item in preflight.ingredients.items:
+            if item.conflict_type is IngredientConflictType.NEW:
+                action = BatchIngredientAction.CREATE
+            elif item.conflict_type is IngredientConflictType.EXACT_SAME:
+                action = BatchIngredientAction.REUSE
+            else:
+                requested = ingredient_decisions.get(item.incoming.key)
+                action = (
+                    BatchIngredientAction(requested)
+                    if requested
+                    in {
+                        BatchIngredientAction.REUSE.value,
+                        BatchIngredientAction.COPY_WITH_GENERATED_NAME.value,
+                    }
+                    else BatchIngredientAction.SKIP
+                )
+            ingredient_items.append(DishIngredientPlanItem(item, action))
+
+        if dish_decision == DishImportAction.SKIP.value:
+            dish_action = DishImportAction.SKIP
+        elif preflight.conflict_type is DishConflictType.NEW:
+            dish_action = DishImportAction.CREATE
+        elif dish_decision == DishImportAction.CREATE_COPY.value:
+            dish_action = DishImportAction(dish_decision)
+        else:
+            dish_action = DishImportAction.UNRESOLVED
+        return DishImportPlan(
+            dish=preflight.dish,
+            dish_conflict_type=preflight.conflict_type,
+            dish_action=dish_action,
+            existing_dish=preflight.existing,
+            ingredients=tuple(ingredient_items),
+        )
+
+    async def import_dish(
+        self,
+        package_id: int,
+        recipient_user_id: int,
+        ingredient_decisions: dict[str, str],
+        dish_decision: str | None,
+        *,
+        now: datetime | None = None,
+    ) -> DishImportResult:
+        completed_at = now or datetime.now(UTC)
+        access = await self.get_dish_package(
+            package_id,
+            recipient_user_id,
+            now=completed_at,
+        )
+        if access.is_owner:
+            raise ValidationError("Нельзя импортировать собственную ссылку.")
+        plan = await self.build_dish_import_plan(
+            recipient_user_id,
+            access.payload,
+            ingredient_decisions,
+            dish_decision,
+        )
+        if (
+            access.previous_import is not None
+            and access.previous_import.status == ShareImportStatus.COMPLETED
+        ):
+            return DishImportResult(
+                access.previous_import,
+                plan,
+                None,
+                already_completed=True,
+            )
+        if not plan.can_import:
+            raise ValidationError("Сначала разрешите все конфликты импорта.")
+
+        import_record, claimed = await self._repository.claim_import(
+            package_id,
+            recipient_user_id,
+        )
+        if not claimed:
+            if import_record.status == ShareImportStatus.PROCESSING:
+                raise ValidationError(
+                    "Этот импорт уже обрабатывается. Повторите проверку чуть позже."
+                )
+            return DishImportResult(
+                import_record,
+                plan,
+                None,
+                already_completed=True,
+            )
+
+        if plan.dish_action is DishImportAction.SKIP:
+            completed = await self._repository.complete_dish_import(
+                import_record.id,
+                created_ingredients_count=0,
+                reused_ingredients_count=0,
+                skipped_ingredients_count=len(plan.ingredients),
+                created_dishes_count=0,
+                skipped_dishes_count=1,
+                completed_at=completed_at,
+            )
+            return DishImportResult(completed, plan, None)
+
+        ingredient_mapping: dict[str, Ingredient] = {}
+        created_count = 0
+        reused_count = 0
+        for item in plan.ingredients:
+            if item.action is BatchIngredientAction.CREATE:
+                ingredient = await self._create_imported_ingredient(
+                    recipient_user_id,
+                    item.preflight.incoming,
+                )
+                created_count += 1
+            elif item.action is BatchIngredientAction.REUSE:
+                ingredient = item.preflight.existing
+                if ingredient is None:
+                    raise ValidationError(
+                        "План импорта устарел. Откройте ссылку заново."
+                    )
+                reused_count += 1
+            elif item.action is BatchIngredientAction.COPY_WITH_GENERATED_NAME:
+                ingredient = await self._create_unique_copy(
+                    recipient_user_id,
+                    item.preflight.incoming,
+                )
+                created_count += 1
+            else:  # pragma: no cover - guarded by plan.can_import
+                raise ValidationError("Сначала разрешите все конфликты импорта.")
+            ingredient_mapping[item.preflight.incoming.key] = ingredient
+
+        component_data = [
+            DishComponentData(
+                ingredient_id=ingredient_mapping[item.ingredient_key].id,
+                grams=item.grams,
+            )
+            for item in plan.dish.components
+        ]
+        component_ids = [item.ingredient_id for item in component_data]
+        if len(component_ids) != len(set(component_ids)):
+            raise ValidationError(
+                "Несколько компонентов сопоставлены одному ингредиенту. "
+                "Выберите отдельные копии."
+            )
+        dish_service = DishService(self._require_dish_repository())
+        if plan.dish_action is DishImportAction.CREATE_COPY:
+            details = await self._create_unique_dish_copy(
+                recipient_user_id,
+                plan.dish.name,
+                component_data,
+            )
+        else:
+            details = await dish_service.create(
+                recipient_user_id,
+                plan.dish.name,
+                component_data,
+            )
+        completed = await self._repository.complete_dish_import(
+            import_record.id,
+            created_ingredients_count=created_count,
+            reused_ingredients_count=reused_count,
+            skipped_ingredients_count=0,
+            created_dishes_count=1,
+            skipped_dishes_count=0,
+            completed_at=completed_at,
+        )
+        return DishImportResult(completed, plan, details)
 
     async def build_ingredient_batch_plan(
         self,
@@ -687,6 +1363,50 @@ class SharingService:
             is_owner=package.owner_user_id == recipient_user_id,
         )
 
+    async def _build_dish_access(
+        self,
+        package: SharePackage | None,
+        recipient_user_id: int,
+        *,
+        now: datetime | None,
+    ) -> DishPackageAccess:
+        if package is None or package.status != SharePackageStatus.ACTIVE:
+            raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
+        current_time = now or datetime.now(UTC)
+        if package.expires_at <= current_time:
+            raise ExpiredShareLinkError(
+                "Срок действия ссылки истёк. Попросите отправителя создать новую."
+            )
+        try:
+            payload = parse_share_payload(package.payload)
+        except ValueError as error:
+            raise InvalidShareLinkError(
+                "Ссылка недействительна или была отозвана."
+            ) from error
+        if (
+            not isinstance(payload, DishSharePayload)
+            or package.package_type != SharePackageType.DISHES
+            or package.payload_version != payload.version
+            or package.item_count != len(payload.dishes)
+        ):
+            raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
+        try:
+            validate_share_payload_limits(payload, self._limits)
+        except SharePayloadLimitError as error:
+            raise InvalidShareLinkError(
+                "Ссылка недействительна или была отозвана."
+            ) from error
+        previous_import = await self._repository.get_import(
+            package.id,
+            recipient_user_id,
+        )
+        return DishPackageAccess(
+            package=package,
+            payload=payload,
+            previous_import=previous_import,
+            is_owner=package.owner_user_id == recipient_user_id,
+        )
+
     async def _create_imported_ingredient(
         self,
         user_id: int,
@@ -714,10 +1434,83 @@ class SharingService:
                 continue
         raise RuntimeError("Could not allocate a unique ingredient copy name")
 
+    async def _create_unique_dish_copy(
+        self,
+        user_id: int,
+        source_name: str,
+        components: list[DishComponentData],
+    ) -> DishDetails:
+        service = DishService(self._require_dish_repository())
+        for copy_number in range(1, 10_000):
+            suffix = " (копия)" if copy_number == 1 else f" (копия {copy_number})"
+            name = f"{source_name[: 255 - len(suffix)].rstrip()}{suffix}"
+            try:
+                return await service.create_import_copy(user_id, name, components)
+            except DuplicateError:
+                continue
+        raise RuntimeError("Could not allocate a unique dish copy name")
+
+    @staticmethod
+    def _build_dish_payload(
+        owner_user_id: int,
+        records: list[DishRecord],
+    ) -> DishSharePayload:
+        ingredient_keys: dict[int, str] = {}
+        shared_ingredients: list[SharedIngredient] = []
+        shared_dishes: list[SharedDish] = []
+        for dish_index, record in enumerate(records, start=1):
+            if not record.components:
+                raise ValidationError("Нельзя отправить блюдо без ингредиентов.")
+            component_ids = [item.ingredient.id for item in record.components]
+            if len(component_ids) != len(set(component_ids)):
+                raise ValidationError("Рецепт содержит повторяющийся ингредиент.")
+            if any(
+                item.ingredient.user_id != owner_user_id for item in record.components
+            ):
+                raise NotFoundError("Один из ингредиентов блюда недоступен.")
+            for item in record.components:
+                ingredient = item.ingredient
+                if ingredient.id in ingredient_keys:
+                    continue
+                key = f"i{len(ingredient_keys) + 1}"
+                ingredient_keys[ingredient.id] = key
+                shared_ingredients.append(
+                    SharedIngredient(
+                        key=key,
+                        name=ingredient.name,
+                        kcal_per_100g=ingredient.kcal_per_100g,
+                        protein_per_100g=ingredient.protein_per_100g,
+                        fat_per_100g=ingredient.fat_per_100g,
+                        carbs_per_100g=ingredient.carbs_per_100g,
+                    )
+                )
+            shared_dishes.append(
+                SharedDish(
+                    key=f"d{dish_index}",
+                    name=record.dish.name,
+                    components=[
+                        SharedDishComponent(
+                            ingredient_key=ingredient_keys[item.ingredient.id],
+                            grams=item.grams,
+                        )
+                        for item in record.components
+                    ],
+                )
+            )
+        return DishSharePayload(
+            ingredients=shared_ingredients,
+            dishes=shared_dishes,
+        )
+
     def _require_ingredient_repository(self) -> IngredientRepository:
         if self._ingredient_repository is None:
             raise RuntimeError("Ingredient repository is required for this operation")
         return self._ingredient_repository
+
+    def _require_dish_repository(self) -> DishRepository:
+        if self._dish_repository is None:
+            raise RuntimeError("Dish repository is required for this operation")
+        return self._dish_repository
 
 
 def _nutrition_values(incoming: SharedIngredient) -> dict[str, Decimal]:
@@ -752,4 +1545,24 @@ def _nutrition_matches(
             "fat_per_100g",
             "carbs_per_100g",
         )
+    )
+
+
+def calculate_shared_dish_nutrition(
+    payload: DishSharePayload,
+) -> DishNutritionValues:
+    if len(payload.dishes) != 1:
+        raise ValidationError("Пакет должен содержать одно блюдо.")
+    ingredients = {item.key: item for item in payload.ingredients}
+    return NutritionService.calculate_dish_nutrition(
+        NutritionComponent(
+            nutrition_per_100g=NutritionValues(
+                kcal=ingredients[item.ingredient_key].kcal_per_100g,
+                protein=ingredients[item.ingredient_key].protein_per_100g,
+                fat=ingredients[item.ingredient_key].fat_per_100g,
+                carbs=ingredients[item.ingredient_key].carbs_per_100g,
+            ),
+            grams=item.grams,
+        )
+        for item in payload.dishes[0].components
     )

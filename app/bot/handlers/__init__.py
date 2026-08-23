@@ -17,6 +17,8 @@ from app.bot.handlers.reminders import router as reminders_router
 from app.bot.handlers.settings import router as settings_router
 from app.bot.handlers.sharing import router as sharing_router
 from app.bot.handlers.sharing_batch import router as sharing_batch_router
+from app.bot.handlers.sharing_dish import router as sharing_dish_router
+from app.bot.handlers.sharing_dish_batch import router as sharing_dish_batch_router
 from app.bot.handlers.start import router as start_router
 from app.bot.handlers.weight_chart import router as weight_chart_router
 from app.bot.handlers.weights import router as weights_router
@@ -29,6 +31,8 @@ def build_root_router() -> Router:
     router.include_router(start_router)
     router.include_router(sharing_router)
     router.include_router(sharing_batch_router)
+    router.include_router(sharing_dish_router)
+    router.include_router(sharing_dish_batch_router)
     router.include_router(ingredients_router)
     router.include_router(dishes_router)
     router.include_router(diary_router)

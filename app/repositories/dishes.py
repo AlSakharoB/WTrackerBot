@@ -147,6 +147,43 @@ class DishRepository:
         ]
         return DishRecord(dish=dish, components=components)
 
+    async def get_by_ids(
+        self,
+        dish_ids: set[int],
+        user_id: int,
+    ) -> list[DishRecord]:
+        if not dish_ids:
+            return []
+        dishes = list(
+            (
+                await self._session.scalars(
+                    select(Dish).where(
+                        Dish.id.in_(dish_ids),
+                        Dish.user_id == user_id,
+                    )
+                )
+            ).all()
+        )
+        if not dishes:
+            return []
+        rows = await self._session.execute(
+            select(DishIngredient.dish_id, Ingredient, DishIngredient.grams)
+            .join(Ingredient, Ingredient.id == DishIngredient.ingredient_id)
+            .where(DishIngredient.dish_id.in_({dish.id for dish in dishes}))
+            .order_by(DishIngredient.dish_id, DishIngredient.id)
+        )
+        components_by_dish: dict[int, list[DishComponentRecord]] = {
+            dish.id: [] for dish in dishes
+        }
+        for dish_id, ingredient, grams in rows.all():
+            components_by_dish[dish_id].append(
+                DishComponentRecord(ingredient=ingredient, grams=grams)
+            )
+        return [
+            DishRecord(dish=dish, components=components_by_dish[dish.id])
+            for dish in dishes
+        ]
+
     async def get_ingredients(
         self,
         user_id: int,
