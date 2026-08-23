@@ -19,7 +19,10 @@ DISH_EDITOR_ADD = "dish_editor:add"
 DISH_EDITOR_RENAME = "dish_editor:rename"
 DISH_EDITOR_CHANGE = "dish_editor:change"
 DISH_EDITOR_REMOVE = "dish_editor:remove"
+DISH_EDITOR_INGREDIENT_SEARCH = "dish_editor:ingredient_search"
 DISH_EDITOR_CANCEL = "dish_editor:cancel"
+SHARE_DISHES_SELECT = "share:dishes:select"
+SHARE_DISHES_MANAGE = "shm:list:dishes:0:1"
 
 
 class DishesPageCallback(CallbackData, prefix="dishes"):
@@ -58,6 +61,18 @@ def build_dishes_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🔎 Найти", callback_data=DISHES_SEARCH),
                 InlineKeyboardButton(text="📋 Все блюда", callback_data=DISHES_LIST),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📤 Поделиться несколькими",
+                    callback_data=SHARE_DISHES_SELECT,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Мои ссылки",
+                    callback_data=SHARE_DISHES_MANAGE,
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -131,6 +146,16 @@ def build_dish_detail_keyboard(dish_id: int, page: int) -> InlineKeyboardMarkup:
                     callback_data=DiarySourceCallback(
                         entry_type=DiaryEntryType.DISH,
                         source_id=dish_id,
+                    ).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📤 Поделиться",
+                    callback_data=DishCallback(
+                        action="share",
+                        dish_id=dish_id,
+                        page=page,
                     ).pack(),
                 )
             ],
@@ -298,8 +323,69 @@ def build_ingredient_picker_keyboard(page: IngredientPage) -> InlineKeyboardMark
             ),
             InlineKeyboardButton(text="▶️", callback_data=following),
         )
+    if page.total:
+        builder.row(
+            InlineKeyboardButton(
+                text="🔎 Найти ингредиент",
+                callback_data=DISH_EDITOR_INGREDIENT_SEARCH,
+            )
+        )
     builder.row(
         InlineKeyboardButton(text="⬅️ К рецепту", callback_data="dish_editor:back")
+    )
+    return builder.as_markup()
+
+
+def build_ingredient_search_prompt_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📋 Все ингредиенты",
+                    callback_data=DISH_EDITOR_ADD,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ К рецепту",
+                    callback_data="dish_editor:back",
+                )
+            ],
+        ]
+    )
+
+
+def build_ingredient_search_results_keyboard(
+    results: list[SearchResult],
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for result in results:
+        builder.row(
+            InlineKeyboardButton(
+                text=shortened_button_text("🥕", result.name),
+                callback_data=DishIngredientCallback(
+                    action="select",
+                    ingredient_id=result.entity_id,
+                ).pack(),
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔎 Искать снова",
+            callback_data=DISH_EDITOR_INGREDIENT_SEARCH,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📋 Все ингредиенты",
+            callback_data=DISH_EDITOR_ADD,
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ К рецепту",
+            callback_data="dish_editor:back",
+        )
     )
     return builder.as_markup()
 

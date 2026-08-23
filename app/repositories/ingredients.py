@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import String, column, delete, func, select, true, update, values
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.dish import Dish, DishIngredient
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError
+from app.search import DUPLICATE_NAME_CANDIDATE_LIMIT
 
 
 class IngredientRepository:
@@ -55,6 +56,19 @@ class IngredientRepository:
         )
         return await self._session.scalar(statement)
 
+    async def get_by_ids(
+        self,
+        ingredient_ids: set[int],
+        user_id: int,
+    ) -> list[Ingredient]:
+        if not ingredient_ids:
+            return []
+        statement = select(Ingredient).where(
+            Ingredient.id.in_(ingredient_ids),
+            Ingredient.user_id == user_id,
+        )
+        return list((await self._session.scalars(statement)).all())
+
     async def get_by_normalized_name(
         self,
         user_id: int,
@@ -65,6 +79,79 @@ class IngredientRepository:
             Ingredient.name_normalized == name_normalized,
         )
         return await self._session.scalar(statement)
+
+    async def find_similar_names(
+        self,
+        user_id: int,
+        name_normalized: str,
+        similarity_threshold: Decimal,
+    ) -> list[Ingredient]:
+        similarity = func.similarity(Ingredient.name_normalized, name_normalized)
+        statement = (
+            select(Ingredient)
+            .where(
+                Ingredient.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Ingredient.name_normalized, Ingredient.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+        )
+        return list((await self._session.scalars(statement)).all())
+
+    async def find_matches_for_names(
+        self,
+        user_id: int,
+        normalized_names: set[str],
+        similarity_threshold: Decimal,
+    ) -> dict[str, list[Ingredient]]:
+        if not normalized_names:
+            return {}
+        incoming = (
+            values(
+                column("incoming_name", String),
+                name="incoming_ingredient_names",
+            )
+            .data([(name,) for name in sorted(normalized_names)])
+            .cte()
+        )
+        similarity = func.similarity(
+            Ingredient.name_normalized,
+            incoming.c.incoming_name,
+        )
+        candidates = (
+            select(
+                Ingredient.id.label("ingredient_id"),
+                similarity.label("similarity"),
+            )
+            .select_from(Ingredient)
+            .where(
+                Ingredient.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Ingredient.name_normalized, Ingredient.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+            .correlate(incoming)
+            .lateral("candidate_ingredients")
+        )
+        statement = (
+            select(incoming.c.incoming_name, Ingredient)
+            .select_from(incoming)
+            .join(candidates, true())
+            .join(
+                Ingredient,
+                Ingredient.id == candidates.c.ingredient_id,
+            )
+            .order_by(
+                incoming.c.incoming_name,
+                candidates.c.similarity.desc(),
+                Ingredient.name_normalized,
+                Ingredient.id,
+            )
+        )
+        matches = {name: [] for name in normalized_names}
+        for incoming_name, ingredient in (await self._session.execute(statement)).all():
+            matches[str(incoming_name)].append(ingredient)
+        return matches
 
     async def count(self, user_id: int) -> int:
         statement = (

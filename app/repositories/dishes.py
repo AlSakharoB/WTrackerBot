@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import String, column, delete, func, select, true, update, values
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.dish import Dish, DishIngredient
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError
+from app.search import DUPLICATE_NAME_CANDIDATE_LIMIT
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,79 @@ class DishRepository:
                 return dish
         except IntegrityError as error:
             raise DuplicateError("Блюдо с таким названием уже существует.") from error
+
+    async def find_similar_names(
+        self,
+        user_id: int,
+        name_normalized: str,
+        similarity_threshold: Decimal,
+    ) -> list[Dish]:
+        similarity = func.similarity(Dish.name_normalized, name_normalized)
+        statement = (
+            select(Dish)
+            .where(
+                Dish.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Dish.name_normalized, Dish.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+        )
+        return list((await self._session.scalars(statement)).all())
+
+    async def find_matches_for_names(
+        self,
+        user_id: int,
+        normalized_names: set[str],
+        similarity_threshold: Decimal,
+    ) -> dict[str, list[Dish]]:
+        if not normalized_names:
+            return {}
+        incoming = (
+            values(
+                column("incoming_name", String),
+                name="incoming_dish_names",
+            )
+            .data([(name,) for name in sorted(normalized_names)])
+            .cte()
+        )
+        similarity = func.similarity(
+            Dish.name_normalized,
+            incoming.c.incoming_name,
+        )
+        candidates = (
+            select(
+                Dish.id.label("dish_id"),
+                similarity.label("similarity"),
+            )
+            .select_from(Dish)
+            .where(
+                Dish.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Dish.name_normalized, Dish.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+            .correlate(incoming)
+            .lateral("candidate_dishes")
+        )
+        statement = (
+            select(incoming.c.incoming_name, Dish)
+            .select_from(incoming)
+            .join(candidates, true())
+            .join(
+                Dish,
+                Dish.id == candidates.c.dish_id,
+            )
+            .order_by(
+                incoming.c.incoming_name,
+                candidates.c.similarity.desc(),
+                Dish.name_normalized,
+                Dish.id,
+            )
+        )
+        matches = {name: [] for name in normalized_names}
+        for incoming_name, dish in (await self._session.execute(statement)).all():
+            matches[str(incoming_name)].append(dish)
+        return matches
 
     async def replace(
         self,
@@ -127,6 +201,43 @@ class DishRepository:
             for ingredient, grams in rows.all()
         ]
         return DishRecord(dish=dish, components=components)
+
+    async def get_by_ids(
+        self,
+        dish_ids: set[int],
+        user_id: int,
+    ) -> list[DishRecord]:
+        if not dish_ids:
+            return []
+        dishes = list(
+            (
+                await self._session.scalars(
+                    select(Dish).where(
+                        Dish.id.in_(dish_ids),
+                        Dish.user_id == user_id,
+                    )
+                )
+            ).all()
+        )
+        if not dishes:
+            return []
+        rows = await self._session.execute(
+            select(DishIngredient.dish_id, Ingredient, DishIngredient.grams)
+            .join(Ingredient, Ingredient.id == DishIngredient.ingredient_id)
+            .where(DishIngredient.dish_id.in_({dish.id for dish in dishes}))
+            .order_by(DishIngredient.dish_id, DishIngredient.id)
+        )
+        components_by_dish: dict[int, list[DishComponentRecord]] = {
+            dish.id: [] for dish in dishes
+        }
+        for dish_id, ingredient, grams in rows.all():
+            components_by_dish[dish_id].append(
+                DishComponentRecord(ingredient=ingredient, grams=grams)
+            )
+        return [
+            DishRecord(dish=dish, components=components_by_dish[dish.id])
+            for dish in dishes
+        ]
 
     async def get_ingredients(
         self,

@@ -13,12 +13,16 @@ from app.db.models.reminder import ReminderSetting, ReminderType
 from app.repositories.diary import DiaryRepository
 from app.repositories.nutrition_goals import NutritionGoalRepository
 from app.repositories.reminders import ReminderRepository
+from app.repositories.shares import ShareRepository
 from app.repositories.weights import WeightRepository
 from app.services.reminders import ReminderService
+from app.services.sharing import ShareCleanupService
 
 logger = logging.getLogger(__name__)
 
 SCHEDULER_HEARTBEAT_JOB_ID = "system:scheduler-heartbeat"
+SHARE_CLEANUP_JOB_ID = "system:share-cleanup"
+SHARE_CLEANUP_BATCH_SIZE = 100
 
 
 class ReminderScheduler:
@@ -28,10 +32,12 @@ class ReminderScheduler:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         misfire_grace_seconds: int,
+        share_package_retention_days: int = 30,
     ) -> None:
         self._bot = bot
         self._session_factory = session_factory
         self._misfire_grace_seconds = misfire_grace_seconds
+        self._share_package_retention_days = share_package_retention_days
         self._scheduler = AsyncIOScheduler(
             timezone=UTC,
             job_defaults={"coalesce": True, "max_instances": 1},
@@ -72,6 +78,15 @@ class ReminderScheduler:
             replace_existing=True,
             coalesce=True,
             max_instances=1,
+        )
+        self._scheduler.add_job(
+            self.run_share_cleanup,
+            CronTrigger(hour=3, minute=17, timezone=UTC),
+            id=SHARE_CLEANUP_JOB_ID,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=self._misfire_grace_seconds,
         )
         self._scheduler.start()
         self._touch_heartbeat()
@@ -167,6 +182,30 @@ class ReminderScheduler:
                     "exception_type": type(error).__name__,
                 },
             )
+
+    async def run_share_cleanup(self) -> None:
+        try:
+            async with self._session_factory() as session, session.begin():
+                deleted_count = await ShareCleanupService(
+                    ShareRepository(session)
+                ).cleanup_batch(
+                    retention_days=self._share_package_retention_days,
+                    batch_size=SHARE_CLEANUP_BATCH_SIZE,
+                )
+        except Exception:
+            logger.exception(
+                "Share package cleanup failed",
+                extra={"operation": "sharing.cleanup"},
+            )
+            return
+        logger.info(
+            "share_cleanup_completed deleted_count=%d",
+            deleted_count,
+            extra={
+                "operation": "sharing.cleanup_completed",
+                "item_count": deleted_count,
+            },
+        )
 
     def _touch_heartbeat(self) -> None:
         self._last_heartbeat = datetime.now(UTC)

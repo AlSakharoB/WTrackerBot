@@ -5,6 +5,7 @@ from app.repositories.dishes import DishRepository
 from app.repositories.goals import GoalRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.search import SearchRepository
+from app.repositories.shares import ShareRepository
 from app.repositories.users import UserRepository
 from app.repositories.weights import WeightRepository
 
@@ -14,6 +15,7 @@ __all__ = [
     "GoalRepository",
     "IngredientRepository",
     "SearchRepository",
+    "ShareRepository",
     "UserRepository",
     "WeightRepository",
 ]

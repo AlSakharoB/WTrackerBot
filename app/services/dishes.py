@@ -7,7 +7,11 @@ from app.db.models.dish import Dish
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError, NotFoundError, ValidationError
 from app.repositories.dishes import DishRecord, DishRepository
-from app.search import normalize_search_text
+from app.search import (
+    DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+    names_have_different_numbers,
+    normalize_search_text,
+)
 from app.services.nutrition import (
     DishNutritionValues,
     NutritionComponent,
@@ -86,6 +90,7 @@ class DishService:
     ) -> DishDetails:
         normalized_name, name_key = normalize_dish_name(name)
         validated = await self._validate_components(user_id, components)
+        await self._raise_if_similar_name_exists(user_id, name_key)
         dish = await self._repository.create(
             user_id=user_id,
             name=normalized_name,
@@ -93,6 +98,27 @@ class DishService:
             components=[(item.ingredient_id, item.grams) for item in components],
         )
         return self._build_details(dish, validated)
+
+    async def create_import_copy(
+        self,
+        user_id: int,
+        name: str,
+        components: list[DishComponentData],
+    ) -> DishDetails:
+        """Create an explicitly approved import copy without fuzzy rejection."""
+        normalized_name, name_key = normalize_dish_name(name)
+        validated = await self._validate_components(user_id, components)
+        dish = await self._repository.create(
+            user_id=user_id,
+            name=normalized_name,
+            name_normalized=name_key,
+            components=[(item.ingredient_id, item.grams) for item in components],
+        )
+        return self._build_details(dish, validated)
+
+    async def check_name_available(self, user_id: int, name: str) -> None:
+        _, name_normalized = normalize_dish_name(name)
+        await self._raise_if_similar_name_exists(user_id, name_normalized)
 
     async def replace(
         self,
@@ -173,6 +199,30 @@ class DishService:
             DishComponent(ingredient=by_id[item.ingredient_id], grams=item.grams)
             for item in components
         ]
+
+    async def _raise_if_similar_name_exists(
+        self,
+        user_id: int,
+        name_normalized: str,
+    ) -> None:
+        candidates = await self._repository.find_similar_names(
+            user_id,
+            name_normalized,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        duplicate = next(
+            (
+                candidate
+                for candidate in candidates
+                if not names_have_different_numbers(
+                    name_normalized,
+                    candidate.name_normalized,
+                )
+            ),
+            None,
+        )
+        if duplicate is not None:
+            raise DuplicateError(f"Похожее блюдо «{duplicate.name}» уже существует.")
 
     @staticmethod
     def _details_from_record(record: DishRecord) -> DishDetails:

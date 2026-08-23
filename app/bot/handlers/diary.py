@@ -115,6 +115,7 @@ def day_text(summary: DaySummary) -> str:
         )
         for label, consumed, target, unit in targets:
             if target is None:
+                parts.append(f"{label}: {format_decimal(consumed)} {unit}")
                 continue
             progress = calculate_target_progress(consumed, target)
             parts.extend(
@@ -128,7 +129,8 @@ def day_text(summary: DaySummary) -> str:
             if progress.excess > 0:
                 parts.append(f"+{format_decimal(progress.excess)} {unit}")
             parts.append("")
-        parts.pop()
+        if parts[-1] == "":
+            parts.pop()
     parts.extend(
         [
             "",

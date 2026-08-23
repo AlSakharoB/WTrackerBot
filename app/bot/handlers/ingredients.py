@@ -224,11 +224,27 @@ async def ingredient_add_callback(
 
 
 @router.message(IngredientCreateStates.wait_name)
-async def ingredient_create_name(message: Message, state: FSMContext) -> None:
+async def ingredient_create_name(
+    message: Message,
+    state: FSMContext,
+    current_user: User,
+    db_session: AsyncSession,
+) -> None:
     try:
         name, _ = normalize_ingredient_name(message.text or "")
+        await ingredient_service(db_session).check_name_available(
+            current_user.id,
+            name,
+        )
     except ValidationError as error:
         await message.answer(str(error), reply_markup=build_cancel_keyboard())
+        return
+    except DuplicateError as error:
+        await state.clear()
+        await message.answer(
+            f"{escape(str(error))}\n\nДобавление отменено.",
+            reply_markup=build_ingredients_menu_keyboard(),
+        )
         return
     await state.update_data(name=name)
     await state.set_state(IngredientCreateStates.wait_kcal)
@@ -333,7 +349,13 @@ async def ingredient_create_save(
             ),
         )
     except DuplicateError as error:
-        await callback.answer(str(error), show_alert=True)
+        await callback.answer("Добавление отменено", show_alert=True)
+        await state.clear()
+        if callback.message is not None:
+            await callback.message.edit_text(
+                f"{escape(str(error))}\n\nДобавление отменено.",
+                reply_markup=build_ingredients_menu_keyboard(),
+            )
         return
     await callback.answer()
     await state.clear()

@@ -14,6 +14,8 @@ LOG_FORMAT = (
     "%(asctime)s | %(levelname)s | %(name)s | "
     "correlation_id=%(correlation_id)s | user_id=%(user_id)s | "
     "handler=%(handler)s | operation=%(operation)s | "
+    "package_id=%(package_id)s | package_type=%(package_type)s | "
+    "item_count=%(item_count)s | "
     "exception_type=%(exception_type)s | %(message)s"
 )
 
@@ -21,6 +23,9 @@ _TELEGRAM_TOKEN_PATTERN = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{20,}\b")
 _DATABASE_URL_PATTERN = re.compile(
     r"(?P<scheme>postgres(?:ql)?(?:\+asyncpg)?://)[^@\s]+@",
     flags=re.IGNORECASE,
+)
+_SHARE_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])sh_[A-Za-z0-9_-]{32}(?![A-Za-z0-9_-])"
 )
 
 
@@ -30,6 +35,9 @@ class LogContext:
     user_id: int | None = None
     handler: str | None = None
     operation: str | None = None
+    package_id: int | None = None
+    package_type: str | None = None
+    item_count: int | None = None
 
 
 _log_context: ContextVar[LogContext | None] = ContextVar(
@@ -108,6 +116,7 @@ class RedactingFormatter(logging.Formatter):
             r"\g<scheme>[REDACTED_CREDENTIALS]@",
             rendered,
         )
+        rendered = _SHARE_TOKEN_PATTERN.sub("[REDACTED_SHARE_TOKEN]", rendered)
         for secret in self._secrets:
             rendered = rendered.replace(secret, "[REDACTED]")
         return rendered

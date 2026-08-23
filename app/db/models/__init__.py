@@ -6,6 +6,13 @@ from app.db.models.goal import GoalStatus, WeightGoal
 from app.db.models.ingredient import Ingredient
 from app.db.models.nutrition_goal import NutritionGoal
 from app.db.models.reminder import ReminderSetting, ReminderType
+from app.db.models.share import (
+    ShareImport,
+    ShareImportStatus,
+    SharePackage,
+    SharePackageStatus,
+    SharePackageType,
+)
 from app.db.models.user import User
 from app.db.models.weight import WeightEntry
 
@@ -20,6 +27,11 @@ __all__ = [
     "NutritionGoal",
     "ReminderSetting",
     "ReminderType",
+    "ShareImport",
+    "ShareImportStatus",
+    "SharePackage",
+    "SharePackageStatus",
+    "SharePackageType",
     "User",
     "WeightEntry",
     "WeightGoal",

@@ -31,6 +31,8 @@ from app.services.action_lock import ActionLockService
 from app.services.admin_notifications import AdminNotificationService
 from app.services.rate_limit import RateLimitRule, RateLimitScope, RateLimitService
 from app.services.reminder_scheduler import ReminderScheduler
+from app.sharing.links import normalize_bot_username
+from app.sharing.payloads import SharePayloadLimits
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,14 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
         git_commit_sha=settings.git_commit_sha,
         admin_telegram_ids=settings.admin_telegram_ids,
         default_timezone=settings.default_timezone,
+        bot_username=None,
+        share_link_ttl_days=settings.share_link_ttl_days,
+        share_payload_limits=SharePayloadLimits(
+            max_items=settings.share_max_items,
+            max_ingredients=settings.share_max_ingredients,
+            max_components=settings.share_max_components,
+            max_payload_bytes=settings.share_max_payload_bytes,
+        ),
     )
     dispatcher["database_session_factory"] = session_factory
     lifecycle_middleware = LifecycleMiddleware(lifecycle)
@@ -76,6 +86,22 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
             RateLimitScope.WEIGHT_CHART: RateLimitRule(
                 settings.rate_limit_weight_chart_count,
                 settings.rate_limit_weight_chart_window_seconds,
+            ),
+            RateLimitScope.SHARE_CREATE: RateLimitRule(
+                settings.rate_limit_share_create_count,
+                settings.rate_limit_share_create_window_seconds,
+            ),
+            RateLimitScope.SHARE_OPEN: RateLimitRule(
+                settings.rate_limit_share_open_count,
+                settings.rate_limit_share_open_window_seconds,
+            ),
+            RateLimitScope.SHARE_IMPORT: RateLimitRule(
+                settings.rate_limit_share_import_count,
+                settings.rate_limit_share_import_window_seconds,
+            ),
+            RateLimitScope.SHARE_ROTATE: RateLimitRule(
+                settings.rate_limit_share_rotate_count,
+                settings.rate_limit_share_rotate_window_seconds,
             ),
         },
         notice_cooldown_seconds=settings.rate_limit_notice_cooldown_seconds,
@@ -151,10 +177,22 @@ async def run_bot(settings: Settings) -> None:
             ",".join(revision.current),
             extra={"operation": "database.revision_guard"},
         )
+        try:
+            bot_profile = await bot.get_me()
+            if bot_profile.username is None:
+                raise ValueError("Telegram bot profile has no username")
+            dispatcher["bot_username"] = normalize_bot_username(bot_profile.username)
+        except (TelegramAPIError, ValueError):
+            logger.warning(
+                "Failed to cache bot username; sharing links are unavailable",
+                exc_info=True,
+                extra={"operation": "telegram.bot_identity"},
+            )
         reminder_scheduler = ReminderScheduler(
             bot,
             dispatcher["database_session_factory"],
             misfire_grace_seconds=settings.reminder_misfire_grace_seconds,
+            share_package_retention_days=settings.share_package_retention_days,
         )
         dispatcher["reminder_scheduler"] = reminder_scheduler
         lifecycle.register_shutdown_callback(

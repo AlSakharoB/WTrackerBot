@@ -2,14 +2,19 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.handlers.ingredients import ingredient_card
+from app.bot.handlers import ingredients as ingredient_handlers
+from app.bot.handlers.ingredients import ingredient_card, ingredient_create_name
 from app.bot.keyboards.ingredients import (
     IngredientCallback,
     build_ingredient_detail_keyboard,
 )
 from app.db.models.ingredient import Ingredient
-from app.exceptions import NotFoundError, ValidationError
+from app.db.models.user import User
+from app.exceptions import DuplicateError, NotFoundError, ValidationError
 from app.services.ingredients import (
     INGREDIENTS_PAGE_SIZE,
     CreateIngredientData,
@@ -89,6 +94,7 @@ def test_format_decimal(value: Decimal, expected: str) -> None:
 async def test_service_create_validates_and_normalizes_data() -> None:
     ingredient = Ingredient(id=1, user_id=10, name="Куриная грудка")
     repository = Mock()
+    repository.find_similar_names = AsyncMock(return_value=[])
     repository.create = AsyncMock(return_value=ingredient)
     service = IngredientService(repository)
 
@@ -113,6 +119,98 @@ async def test_service_create_validates_and_normalizes_data() -> None:
         fat_per_100g=Decimal("3.6"),
         carbs_per_100g=Decimal("0"),
     )
+
+
+async def test_service_create_rejects_similar_existing_name() -> None:
+    existing = Ingredient(
+        id=1,
+        user_id=10,
+        name="Куриная грудка",
+        name_normalized="куриная грудка",
+    )
+    repository = Mock()
+    repository.find_similar_names = AsyncMock(return_value=[existing])
+    repository.create = AsyncMock()
+    service = IngredientService(repository)
+
+    with pytest.raises(DuplicateError, match="Куриная грудка"):
+        await service.create(
+            10,
+            CreateIngredientData(
+                name="Куриная грудкаа",
+                kcal_per_100g=Decimal("165"),
+                protein_per_100g=Decimal("31"),
+                fat_per_100g=Decimal("3.6"),
+                carbs_per_100g=Decimal("0"),
+            ),
+        )
+
+    repository.create.assert_not_awaited()
+
+
+async def test_service_create_allows_different_numeric_variant() -> None:
+    existing = Ingredient(
+        id=1,
+        user_id=10,
+        name="Молоко 2.5%",
+        name_normalized="молоко 2 5",
+    )
+    created = Ingredient(
+        id=2,
+        user_id=10,
+        name="Молоко 3.2%",
+        name_normalized="молоко 3 2",
+    )
+    repository = Mock()
+    repository.find_similar_names = AsyncMock(return_value=[existing])
+    repository.create = AsyncMock(return_value=created)
+    service = IngredientService(repository)
+
+    result = await service.create(
+        10,
+        CreateIngredientData(
+            name="Молоко 3.2%",
+            kcal_per_100g=Decimal("60"),
+            protein_per_100g=Decimal("3"),
+            fat_per_100g=Decimal("3.2"),
+            carbs_per_100g=Decimal("5"),
+        ),
+    )
+
+    assert result is created
+    repository.create.assert_awaited_once()
+
+
+async def test_name_step_cancels_creation_for_similar_ingredient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = AsyncMock(spec=Message)
+    message.text = "Куриная грудкаа"
+    message.answer = AsyncMock()
+    state = AsyncMock(spec=FSMContext)
+    service = Mock()
+    service.check_name_available = AsyncMock(
+        side_effect=DuplicateError(
+            "Похожий ингредиент «Куриная грудка» уже существует."
+        )
+    )
+    monkeypatch.setattr(
+        ingredient_handlers,
+        "ingredient_service",
+        lambda session: service,
+    )
+
+    await ingredient_create_name(
+        message,
+        state,
+        current_user=User(id=10, telegram_id=100, timezone="Europe/Moscow"),
+        db_session=Mock(spec=AsyncSession),
+    )
+
+    state.clear.assert_awaited_once()
+    state.update_data.assert_not_awaited()
+    assert "Куриная грудка" in message.answer.await_args.args[0]
+    assert "Добавление отменено" in message.answer.await_args.args[0]
 
 
 async def test_service_clamps_page_to_available_range() -> None:
@@ -172,4 +270,5 @@ def test_ingredient_callbacks_fit_telegram_limit() -> None:
 
     assert len(callback_data.encode()) <= 64
     keyboard = build_ingredient_detail_keyboard(ingredient_id=1, page=1)
-    assert len(keyboard.inline_keyboard) == 3
+    assert len(keyboard.inline_keyboard) == 4
+    assert keyboard.inline_keyboard[1][0].text == "📤 Поделиться"

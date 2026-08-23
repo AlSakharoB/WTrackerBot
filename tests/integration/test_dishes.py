@@ -136,6 +136,17 @@ async def test_dish_names_are_unique_per_user(session: AsyncSession) -> None:
             "ОМЛЕТ",
             [DishComponentData(first_ingredient, Decimal("200"))],
         )
+    await service.create(
+        first_user,
+        "Омлет с сыром",
+        [DishComponentData(first_ingredient, Decimal("200"))],
+    )
+    with pytest.raises(DuplicateError, match="Омлет с сыром"):
+        await service.create(
+            first_user,
+            "Омлет с сырома",
+            [DishComponentData(first_ingredient, Decimal("200"))],
+        )
 
 
 async def test_dish_and_components_are_isolated_by_user(
