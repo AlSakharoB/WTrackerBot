@@ -33,6 +33,7 @@ def test_main_menu_contains_expected_layout() -> None:
 
 async def test_start_greets_new_user() -> None:
     message = AsyncMock(spec=Message)
+    message.text = "/start"
     message.answer = AsyncMock()
     state = AsyncMock()
     user = User(id=1, telegram_id=123, timezone="Europe/Moscow")
@@ -46,6 +47,7 @@ async def test_start_greets_new_user() -> None:
 
 async def test_start_opens_menu_for_existing_user() -> None:
     message = AsyncMock(spec=Message)
+    message.text = "/start"
     message.answer = AsyncMock()
     state = AsyncMock()
     user = User(id=1, telegram_id=123, timezone="Europe/Moscow")

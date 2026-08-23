@@ -87,6 +87,8 @@ async def test_ingredient_name_is_unique_only_within_user(
     assert first.id != second.id
     with pytest.raises(DuplicateError):
         await service.create(first_user_id, ingredient_data(" АВОКАДО "))
+    with pytest.raises(DuplicateError, match="Авокадо"):
+        await service.create(first_user_id, ingredient_data("Авокадоа"))
     with pytest.raises(DuplicateError):
         await service.update_field(
             first_user_id,
@@ -96,6 +98,19 @@ async def test_ingredient_name_is_unique_only_within_user(
         )
 
     assert (await service.get(first_user_id, banana.id)).name == "Банан"
+
+
+async def test_similar_ingredient_name_is_scoped_to_user(
+    session: AsyncSession,
+) -> None:
+    owner_id = await create_user(session, 9220000007)
+    other_id = await create_user(session, 9220000008)
+    service = IngredientService(IngredientRepository(session))
+
+    await service.create(owner_id, ingredient_data("Куриная грудка"))
+    created = await service.create(other_id, ingredient_data("Куриная грудкаа"))
+
+    assert created.user_id == other_id
 
 
 async def test_user_cannot_read_update_or_delete_foreign_ingredient(

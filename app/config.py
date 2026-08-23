@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     admin_telegram_ids: Annotated[set[int], NoDecode] = Field(default_factory=set)
     admin_error_cooldown_seconds: int = Field(default=300, ge=0, le=86400)
     admin_error_max_per_minute: int = Field(default=10, ge=1, le=1000)
+    share_link_ttl_days: int = Field(default=30, ge=1, le=90)
+    share_max_items: int = Field(default=20, ge=1, le=100)
+    share_max_ingredients: int = Field(default=100, ge=1, le=1000)
+    share_max_components: int = Field(default=200, ge=1, le=5000)
+    share_max_payload_bytes: int = Field(
+        default=262_144,
+        ge=1024,
+        le=1_048_576,
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

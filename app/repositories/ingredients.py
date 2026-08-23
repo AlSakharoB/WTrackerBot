@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.dish import Dish, DishIngredient
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError
+from app.search import DUPLICATE_NAME_CANDIDATE_LIMIT
 
 
 class IngredientRepository:
@@ -65,6 +66,24 @@ class IngredientRepository:
             Ingredient.name_normalized == name_normalized,
         )
         return await self._session.scalar(statement)
+
+    async def find_similar_names(
+        self,
+        user_id: int,
+        name_normalized: str,
+        similarity_threshold: Decimal,
+    ) -> list[Ingredient]:
+        similarity = func.similarity(Ingredient.name_normalized, name_normalized)
+        statement = (
+            select(Ingredient)
+            .where(
+                Ingredient.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Ingredient.name_normalized, Ingredient.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+        )
+        return list((await self._session.scalars(statement)).all())
 
     async def count(self, user_id: int) -> int:
         statement = (

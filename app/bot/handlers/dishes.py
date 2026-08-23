@@ -14,6 +14,7 @@ from app.bot.keyboards.dishes import (
     DISH_EDITOR_ADD,
     DISH_EDITOR_CANCEL,
     DISH_EDITOR_CHANGE,
+    DISH_EDITOR_INGREDIENT_SEARCH,
     DISH_EDITOR_REMOVE,
     DISH_EDITOR_RENAME,
     DISHES_BACK_MAIN,
@@ -37,11 +38,13 @@ from app.bot.keyboards.dishes import (
     build_dish_search_results_keyboard,
     build_dishes_menu_keyboard,
     build_ingredient_picker_keyboard,
+    build_ingredient_search_prompt_keyboard,
+    build_ingredient_search_results_keyboard,
 )
 from app.bot.keyboards.main import DISHES_BUTTON
 from app.bot.states.dishes import DishEditorStates, DishSearchStates
 from app.db.models.user import User
-from app.exceptions import AppError, NotFoundError, ValidationError
+from app.exceptions import AppError, DuplicateError, NotFoundError, ValidationError
 from app.repositories.dishes import DishRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.search import SearchRepository
@@ -78,6 +81,16 @@ DISH_SEARCH_EMPTY = """Ничего похожего не найдено.
 • написать меньше слов;
 • проверить название;
 • создать новое блюдо."""
+
+DISH_INGREDIENT_SEARCH_PROMPT = """🔎 <b>Поиск ингредиента</b>
+
+Введите название или часть названия.
+
+Можно писать с небольшой опечаткой."""
+
+DISH_INGREDIENT_SEARCH_EMPTY = """Ничего похожего не найдено.
+
+Попробуйте изменить запрос или вернуться ко всем ингредиентам."""
 
 
 def dish_service(session: AsyncSession) -> DishService:
@@ -304,6 +317,17 @@ async def dish_name_message(
     except ValidationError as error:
         await message.answer(str(error), reply_markup=build_dish_cancel_keyboard())
         return
+    data = await state.get_data()
+    if data.get("mode") == "create":
+        try:
+            await dish_service(db_session).check_name_available(current_user.id, name)
+        except DuplicateError as error:
+            await state.clear()
+            await message.answer(
+                f"{escape(str(error))}\n\nДобавление отменено.",
+                reply_markup=build_dishes_menu_keyboard(),
+            )
+            return
     await state.update_data(name=name)
     await state.set_state(DishEditorStates.editor)
     await show_editor_message(
@@ -343,6 +367,68 @@ async def dish_editor_add(
             text,
             reply_markup=build_ingredient_picker_keyboard(page),
         )
+
+
+@router.callback_query(
+    DishEditorStates.wait_ingredient_search,
+    F.data == DISH_EDITOR_ADD,
+)
+async def dish_ingredient_search_open_list(
+    callback: CallbackQuery,
+    state: FSMContext,
+    current_user: User,
+    db_session: AsyncSession,
+) -> None:
+    await state.set_state(DishEditorStates.editor)
+    await dish_editor_add(callback, current_user, db_session)
+
+
+@router.callback_query(
+    DishEditorStates.editor,
+    F.data == DISH_EDITOR_INGREDIENT_SEARCH,
+)
+async def dish_ingredient_search(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    await callback.answer()
+    await state.set_state(DishEditorStates.wait_ingredient_search)
+    if callback.message is not None:
+        await callback.message.edit_text(
+            DISH_INGREDIENT_SEARCH_PROMPT,
+            reply_markup=build_ingredient_search_prompt_keyboard(),
+        )
+
+
+@router.message(DishEditorStates.wait_ingredient_search)
+async def dish_ingredient_search_query(
+    message: Message,
+    state: FSMContext,
+    current_user: User,
+    db_session: AsyncSession,
+) -> None:
+    try:
+        results = await search_service(db_session).search_ingredients(
+            current_user.id,
+            message.text or "",
+        )
+    except ValidationError as error:
+        await message.answer(
+            str(error),
+            reply_markup=build_ingredient_search_prompt_keyboard(),
+        )
+        return
+    await state.set_state(DishEditorStates.editor)
+    if not results:
+        await message.answer(
+            DISH_INGREDIENT_SEARCH_EMPTY,
+            reply_markup=build_ingredient_search_results_keyboard([]),
+        )
+        return
+    await message.answer(
+        "🔎 <b>Найденные ингредиенты</b>",
+        reply_markup=build_ingredient_search_results_keyboard(results),
+    )
 
 
 @router.callback_query(
@@ -534,6 +620,20 @@ async def dish_editor_back(
 
 
 @router.callback_query(
+    DishEditorStates.wait_ingredient_search,
+    F.data == "dish_editor:back",
+)
+async def dish_ingredient_search_back(
+    callback: CallbackQuery,
+    state: FSMContext,
+    current_user: User,
+    db_session: AsyncSession,
+) -> None:
+    await state.set_state(DishEditorStates.editor)
+    await dish_editor_back(callback, state, current_user, db_session)
+
+
+@router.callback_query(
     DishEditorStates.editor,
     ConfirmActionCallback.filter(F.action == DISH_SAVE_ACTION),
 )
@@ -562,6 +662,18 @@ async def dish_editor_save(
                 str(data["name"]),
                 draft_components(data),
             )
+    except DuplicateError as error:
+        if data["mode"] != "create":
+            await callback.answer(str(error), show_alert=True)
+            return
+        await callback.answer("Добавление отменено", show_alert=True)
+        await state.clear()
+        if callback.message is not None:
+            await callback.message.edit_text(
+                f"{escape(str(error))}\n\nДобавление отменено.",
+                reply_markup=build_dishes_menu_keyboard(),
+            )
+        return
     except AppError as error:
         await callback.answer(str(error), show_alert=True)
         return

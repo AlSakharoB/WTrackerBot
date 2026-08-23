@@ -24,6 +24,7 @@ from app.services.nutrition import (
     NutritionValues,
 )
 from app.services.search import SearchService
+from app.services.sharing import CreatedSharePackage, SharingService
 from app.services.users import TelegramUserData, UserService, UserSyncResult
 from app.services.weights import WeightPage, WeightService, WeightSummary
 
@@ -51,6 +52,8 @@ __all__ = [
     "NutritionComponent",
     "NutritionValues",
     "SearchService",
+    "CreatedSharePackage",
+    "SharingService",
     "TelegramUserData",
     "UserService",
     "UserSyncResult",

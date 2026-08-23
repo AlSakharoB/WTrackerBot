@@ -7,7 +7,11 @@ from re import fullmatch
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError, NotFoundError, ValidationError
 from app.repositories.ingredients import IngredientRepository
-from app.search import normalize_search_text
+from app.search import (
+    DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+    names_have_different_numbers,
+    normalize_search_text,
+)
 
 INGREDIENTS_PAGE_SIZE = 8
 NUTRITION_LIMITS = {
@@ -90,12 +94,36 @@ class IngredientService:
             for field in IngredientField
             if field is not IngredientField.NAME
         }
+        await self._raise_if_similar_name_exists(user_id, name_normalized)
         return await self._repository.create(
             user_id=user_id,
             name=name,
             name_normalized=name_normalized,
             **validated,
         )
+
+    async def create_import_copy(
+        self,
+        user_id: int,
+        data: CreateIngredientData,
+    ) -> Ingredient:
+        """Create an explicitly approved import copy without fuzzy rejection."""
+        name, name_normalized = normalize_ingredient_name(data.name)
+        validated = {
+            field.value: parse_nutrition_value(field, str(getattr(data, field.value)))
+            for field in IngredientField
+            if field is not IngredientField.NAME
+        }
+        return await self._repository.create(
+            user_id=user_id,
+            name=name,
+            name_normalized=name_normalized,
+            **validated,
+        )
+
+    async def check_name_available(self, user_id: int, name: str) -> None:
+        _, name_normalized = normalize_ingredient_name(name)
+        await self._raise_if_similar_name_exists(user_id, name_normalized)
 
     async def get(self, user_id: int, ingredient_id: int) -> Ingredient:
         ingredient = await self._repository.get_by_id(ingredient_id, user_id)
@@ -165,3 +193,29 @@ class IngredientService:
         deleted = await self._repository.delete(ingredient_id, user_id)
         if not deleted:
             raise NotFoundError("Ингредиент не найден.")
+
+    async def _raise_if_similar_name_exists(
+        self,
+        user_id: int,
+        name_normalized: str,
+    ) -> None:
+        candidates = await self._repository.find_similar_names(
+            user_id,
+            name_normalized,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        duplicate = next(
+            (
+                candidate
+                for candidate in candidates
+                if not names_have_different_numbers(
+                    name_normalized,
+                    candidate.name_normalized,
+                )
+            ),
+            None,
+        )
+        if duplicate is not None:
+            raise DuplicateError(
+                f"Похожий ингредиент «{duplicate.name}» уже существует."
+            )

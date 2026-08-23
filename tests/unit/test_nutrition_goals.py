@@ -107,8 +107,42 @@ def test_day_text_shows_only_configured_targets_and_excess() -> None:
     assert "+170 ккал" in text
     assert "80 / 160 г" in text
     assert "█████░░░░░ 50%" in text
-    assert "🥑 Жиры\n" not in text
-    assert "🍞 Углеводы\n" not in text
+    assert "🥑 Жиры: 61 г" in text
+    assert "🍞 Углеводы: 184 г" in text
+
+
+def test_day_text_shows_macro_grams_without_macro_targets() -> None:
+    goal = NutritionGoal(
+        id=1,
+        user_id=10,
+        kcal_target=Decimal("2200"),
+        protein_target_g=None,
+        fat_target_g=None,
+        carbs_target_g=None,
+        effective_from=date(2026, 8, 1),
+    )
+    summary = DaySummary(
+        entry_date=date(2026, 8, 14),
+        entries=[],
+        totals=NutritionValues(
+            kcal=Decimal("1370"),
+            protein=Decimal("80"),
+            fat=Decimal("61"),
+            carbs=Decimal("184"),
+        ),
+        macro_percentages=MacroPercentages(
+            protein=Decimal("20"),
+            fat=Decimal("35"),
+            carbs=Decimal("45"),
+        ),
+        nutrition_goal=goal,
+    )
+
+    text = day_text(summary)
+
+    assert "🥩 Белки: 80 г" in text
+    assert "🥑 Жиры: 61 г" in text
+    assert "🍞 Углеводы: 184 г" in text
 
 
 def test_day_keyboard_links_to_nutrition_goal_settings() -> None:

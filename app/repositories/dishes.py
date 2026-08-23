@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.dish import Dish, DishIngredient
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError
+from app.search import DUPLICATE_NAME_CANDIDATE_LIMIT
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,24 @@ class DishRepository:
                 return dish
         except IntegrityError as error:
             raise DuplicateError("Блюдо с таким названием уже существует.") from error
+
+    async def find_similar_names(
+        self,
+        user_id: int,
+        name_normalized: str,
+        similarity_threshold: Decimal,
+    ) -> list[Dish]:
+        similarity = func.similarity(Dish.name_normalized, name_normalized)
+        statement = (
+            select(Dish)
+            .where(
+                Dish.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Dish.name_normalized, Dish.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+        )
+        return list((await self._session.scalars(statement)).all())
 
     async def replace(
         self,

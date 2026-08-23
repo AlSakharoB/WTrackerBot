@@ -171,6 +171,16 @@ def build_ingredient_detail_keyboard(
             ],
             [
                 InlineKeyboardButton(
+                    text="📤 Поделиться",
+                    callback_data=IngredientCallback(
+                        action="share",
+                        ingredient_id=ingredient_id,
+                        page=page,
+                    ).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="✏️ Изменить",
                     callback_data=IngredientCallback(
                         action="edit",

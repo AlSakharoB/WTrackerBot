@@ -66,7 +66,10 @@ async def test_command_registration_failure_does_not_block_polling(
     dispatcher = FakeDispatcher(engine)
     session = Mock()
     session.close = AsyncMock()
-    bot = Mock(session=session)
+    bot = Mock(
+        session=session,
+        get_me=AsyncMock(return_value=Mock(username="nutrition_test_bot")),
+    )
     settings = Settings(
         bot_token="test-token",
         database_url="postgresql+asyncpg://user:pass@localhost/db",
@@ -97,12 +100,18 @@ async def test_command_registration_failure_does_not_block_polling(
     engine.dispose.assert_awaited_once()
     scheduler.start.assert_awaited_once()
     scheduler.shutdown.assert_awaited_once()
+    bot.get_me.assert_awaited_once()
+    assert dispatcher["bot_username"] == "nutrition_test_bot"
 
 
 async def test_database_startup_failure_notifies_admin(monkeypatch) -> None:
     engine = Mock(dispose=AsyncMock())
     dispatcher = FakeDispatcher(engine)
-    bot = Mock(session=Mock(close=AsyncMock()), send_message=AsyncMock())
+    bot = Mock(
+        session=Mock(close=AsyncMock()),
+        send_message=AsyncMock(),
+        get_me=AsyncMock(return_value=Mock(username="nutrition_test_bot")),
+    )
     settings = Settings(
         bot_token="test-token",
         database_url="postgresql+asyncpg://user:pass@localhost/db",
@@ -134,7 +143,11 @@ async def test_unexpected_polling_failure_notifies_admin(monkeypatch) -> None:
     dispatcher = FakeDispatcher(engine)
     polling_error = RuntimeError("polling failed")
     dispatcher.start_polling.side_effect = polling_error
-    bot = Mock(session=Mock(close=AsyncMock()), send_message=AsyncMock())
+    bot = Mock(
+        session=Mock(close=AsyncMock()),
+        send_message=AsyncMock(),
+        get_me=AsyncMock(return_value=Mock(username="nutrition_test_bot")),
+    )
     settings = Settings(
         bot_token="test-token",
         database_url="postgresql+asyncpg://user:pass@localhost/db",
@@ -168,6 +181,7 @@ async def test_http_client_close_failure_does_not_skip_database_disposal(
     bot = Mock(
         session=Mock(close=AsyncMock(side_effect=OSError("close failed"))),
         send_message=AsyncMock(),
+        get_me=AsyncMock(return_value=Mock(username="nutrition_test_bot")),
     )
     settings = Settings(
         bot_token="test-token",
