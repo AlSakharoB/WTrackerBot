@@ -169,6 +169,17 @@ async def handle_ingredient_share_start(
             reply_markup=build_import_done_keyboard(),
         )
         return
+    if len(access.payload.ingredients) > 1:
+        from app.bot.handlers.sharing_batch import handle_batch_ingredient_access
+
+        await handle_batch_ingredient_access(
+            message,
+            state,
+            current_user,
+            access,
+            service,
+        )
+        return
 
     action_token = generate_action_token()
     await state.update_data(

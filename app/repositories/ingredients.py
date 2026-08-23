@@ -56,6 +56,19 @@ class IngredientRepository:
         )
         return await self._session.scalar(statement)
 
+    async def get_by_ids(
+        self,
+        ingredient_ids: set[int],
+        user_id: int,
+    ) -> list[Ingredient]:
+        if not ingredient_ids:
+            return []
+        statement = select(Ingredient).where(
+            Ingredient.id.in_(ingredient_ids),
+            Ingredient.user_id == user_id,
+        )
+        return list((await self._session.scalars(statement)).all())
+
     async def get_by_normalized_name(
         self,
         user_id: int,

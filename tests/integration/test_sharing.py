@@ -11,6 +11,7 @@ from app.repositories.ingredients import IngredientRepository
 from app.repositories.shares import ShareRepository
 from app.search import normalize_search_text
 from app.services.sharing import (
+    BatchIngredientAction,
     ExpiredShareLinkError,
     IngredientConflictType,
     IngredientImportResolution,
@@ -302,3 +303,159 @@ async def test_expired_revoked_and_invalid_tokens_are_expected_errors(
 
     with pytest.raises(InvalidShareLinkError):
         await service.resolve_ingredient_token("sh_invalid", recipient.id)
+
+
+async def test_batch_snapshot_preflight_import_and_repeat_are_consistent(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000061, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000062, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    source_new = ingredient_model(owner.id, name="Овсяные хлопья")
+    source_exact = ingredient_model(owner.id, name="Молоко")
+    source_conflict = ingredient_model(owner.id, name="Творог")
+    recipient_exact = ingredient_model(recipient.id, name="Молоко")
+    recipient_conflict = ingredient_model(
+        recipient.id,
+        name="Творог",
+        kcal="220.00",
+    )
+    session.add_all(
+        [
+            source_new,
+            source_exact,
+            source_conflict,
+            recipient_exact,
+            recipient_conflict,
+        ]
+    )
+    await session.flush()
+    service = sharing_service(session)
+
+    created = await service.create_ingredient_batch_package(
+        owner.id,
+        [source_conflict.id, source_new.id, source_exact.id],
+    )
+    access = await service.resolve_ingredient_token(created.token, recipient.id)
+    preflight = await service.preflight_ingredient_batch(recipient.id, access.payload)
+
+    assert [item.name for item in access.payload.ingredients] == [
+        "Творог",
+        "Овсяные хлопья",
+        "Молоко",
+    ]
+    assert preflight.new_count == 1
+    assert preflight.exact_count == 1
+    assert preflight.conflict_count == 1
+
+    imported = await service.import_ingredient_batch(
+        created.package.id,
+        recipient.id,
+        {},
+    )
+    repeated = await service.import_ingredient_batch(
+        created.package.id,
+        recipient.id,
+        {},
+    )
+
+    assert imported.import_record.created_ingredients_count == 1
+    assert imported.import_record.reused_ingredients_count == 1
+    assert imported.import_record.skipped_ingredients_count == 1
+    assert repeated.already_completed
+    assert (
+        await session.scalar(
+            select(func.count(Ingredient.id)).where(Ingredient.user_id == recipient.id)
+        )
+        == 3
+    )
+    assert (
+        await session.scalar(
+            select(func.count(ShareImport.id)).where(
+                ShareImport.package_id == created.package.id,
+                ShareImport.recipient_user_id == recipient.id,
+            )
+        )
+        == 1
+    )
+
+
+async def test_batch_copy_resolution_and_source_validation(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000071, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000072, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    source = ingredient_model(owner.id, name="Творог")
+    existing = ingredient_model(recipient.id, name="Творог", kcal="220.00")
+    session.add_all([source, existing])
+    await session.flush()
+    service = sharing_service(session)
+
+    with pytest.raises(NotFoundError, match="недоступен"):
+        await service.create_ingredient_batch_package(owner.id, [existing.id])
+
+    created = await service.create_ingredient_batch_package(owner.id, [source.id])
+    imported = await service.import_ingredient_batch(
+        created.package.id,
+        recipient.id,
+        {"i1": BatchIngredientAction.COPY_WITH_GENERATED_NAME.value},
+    )
+
+    assert imported.import_record.created_ingredients_count == 1
+    assert imported.created_ingredients[0].name == "Творог (копия)"
+    await session.delete(source)
+    await session.flush()
+    with pytest.raises(NotFoundError, match="недоступен"):
+        await service.create_ingredient_batch_package(owner.id, [source.id])
+
+
+async def test_batch_import_rolls_back_all_rows_on_failure(
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = User(telegram_id=9951000081, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000082, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    first = ingredient_model(owner.id, name="Первый продукт")
+    second = ingredient_model(owner.id, name="Второй продукт")
+    session.add_all([first, second])
+    await session.flush()
+    service = sharing_service(session)
+    created = await service.create_ingredient_batch_package(
+        owner.id, [first.id, second.id]
+    )
+    original_create = service._create_imported_ingredient
+    calls = 0
+
+    async def fail_on_second(user_id: int, incoming: SharedIngredient) -> Ingredient:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("forced batch failure")
+        return await original_create(user_id, incoming)
+
+    monkeypatch.setattr(service, "_create_imported_ingredient", fail_on_second)
+
+    with pytest.raises(RuntimeError, match="forced batch failure"):
+        async with session.begin_nested():
+            await service.import_ingredient_batch(created.package.id, recipient.id, {})
+
+    assert (
+        await session.scalar(
+            select(func.count(Ingredient.id)).where(Ingredient.user_id == recipient.id)
+        )
+        == 0
+    )
+    assert (
+        await session.scalar(
+            select(func.count(ShareImport.id)).where(
+                ShareImport.package_id == created.package.id,
+                ShareImport.recipient_user_id == recipient.id,
+            )
+        )
+        == 0
+    )

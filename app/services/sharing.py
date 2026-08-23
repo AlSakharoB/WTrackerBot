@@ -67,6 +67,13 @@ class IngredientImportResolution(StrEnum):
     CREATE_COPY = "create_copy"
 
 
+class BatchIngredientAction(StrEnum):
+    CREATE = "create"
+    REUSE = "reuse"
+    COPY_WITH_GENERATED_NAME = "copy_with_generated_name"
+    SKIP = "skip"
+
+
 @dataclass(frozen=True, slots=True)
 class CreatedSharePackage:
     package: SharePackage
@@ -103,6 +110,59 @@ class IngredientImportResult:
             IngredientConflictType.NAME_CONFLICT,
             IngredientConflictType.SIMILAR_CONFLICT,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class BatchIngredientPreflight:
+    items: tuple[IngredientPreflight, ...]
+
+    @property
+    def new_count(self) -> int:
+        return sum(
+            item.conflict_type is IngredientConflictType.NEW for item in self.items
+        )
+
+    @property
+    def exact_count(self) -> int:
+        return sum(
+            item.conflict_type is IngredientConflictType.EXACT_SAME
+            for item in self.items
+        )
+
+    @property
+    def conflict_count(self) -> int:
+        return len(self.items) - self.new_count - self.exact_count
+
+    @property
+    def conflicts(self) -> tuple[IngredientPreflight, ...]:
+        return tuple(
+            item
+            for item in self.items
+            if item.conflict_type
+            in {
+                IngredientConflictType.NAME_CONFLICT,
+                IngredientConflictType.SIMILAR_CONFLICT,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BatchIngredientPlanItem:
+    preflight: IngredientPreflight
+    action: BatchIngredientAction
+
+
+@dataclass(frozen=True, slots=True)
+class BatchIngredientImportPlan:
+    items: tuple[BatchIngredientPlanItem, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BatchIngredientImportResult:
+    import_record: ShareImport
+    plan: BatchIngredientImportPlan
+    created_ingredients: tuple[Ingredient, ...]
+    already_completed: bool = False
 
 
 class SharingService:
@@ -153,6 +213,50 @@ class SharingService:
             share_text=(
                 f"Делюсь ингредиентом «{ingredient.name}». "
                 "Откройте ссылку, чтобы добавить его в бот."
+            ),
+        )
+
+    async def create_ingredient_batch_package(
+        self,
+        owner_user_id: int,
+        ingredient_ids: list[int],
+    ) -> CreatedSharePackage:
+        if not ingredient_ids:
+            raise ValidationError("Выберите хотя бы один ингредиент.")
+        if len(ingredient_ids) != len(set(ingredient_ids)):
+            raise ValidationError("Один ингредиент нельзя выбрать дважды.")
+        if len(ingredient_ids) > self._limits.max_items:
+            raise ValidationError(
+                f"Можно выбрать не более {self._limits.max_items} ингредиентов."
+            )
+        ingredient_repository = self._require_ingredient_repository()
+        ingredients = await ingredient_repository.get_by_ids(
+            set(ingredient_ids),
+            owner_user_id,
+        )
+        by_id = {ingredient.id: ingredient for ingredient in ingredients}
+        if len(by_id) != len(ingredient_ids):
+            raise NotFoundError("Один из выбранных ингредиентов удалён или недоступен.")
+        ordered = [by_id[ingredient_id] for ingredient_id in ingredient_ids]
+        payload = IngredientSharePayload(
+            ingredients=[
+                SharedIngredient(
+                    key=f"i{index}",
+                    name=ingredient.name,
+                    kcal_per_100g=ingredient.kcal_per_100g,
+                    protein_per_100g=ingredient.protein_per_100g,
+                    fat_per_100g=ingredient.fat_per_100g,
+                    carbs_per_100g=ingredient.carbs_per_100g,
+                )
+                for index, ingredient in enumerate(ordered, start=1)
+            ]
+        )
+        return await self.create_package(
+            owner_user_id,
+            payload,
+            share_text=(
+                f"Делюсь набором ингредиентов ({len(ordered)}). "
+                "Откройте ссылку, чтобы добавить их в бот."
             ),
         )
 
@@ -280,6 +384,143 @@ class SharingService:
             )
         return IngredientPreflight(IngredientConflictType.NEW, incoming)
 
+    async def preflight_ingredient_batch(
+        self,
+        recipient_user_id: int,
+        payload: IngredientSharePayload,
+    ) -> BatchIngredientPreflight:
+        items = [
+            await self.preflight_ingredient(recipient_user_id, incoming)
+            for incoming in payload.ingredients
+        ]
+        return BatchIngredientPreflight(tuple(items))
+
+    async def build_ingredient_batch_plan(
+        self,
+        recipient_user_id: int,
+        payload: IngredientSharePayload,
+        conflict_decisions: dict[str, str],
+    ) -> BatchIngredientImportPlan:
+        preflight = await self.preflight_ingredient_batch(
+            recipient_user_id,
+            payload,
+        )
+        items: list[BatchIngredientPlanItem] = []
+        for item in preflight.items:
+            if item.conflict_type is IngredientConflictType.NEW:
+                action = BatchIngredientAction.CREATE
+            elif item.conflict_type is IngredientConflictType.EXACT_SAME:
+                action = BatchIngredientAction.REUSE
+            else:
+                try:
+                    selected = BatchIngredientAction(
+                        conflict_decisions.get(
+                            item.incoming.key,
+                            BatchIngredientAction.SKIP,
+                        )
+                    )
+                except ValueError:
+                    selected = BatchIngredientAction.SKIP
+                action = (
+                    selected
+                    if selected
+                    in {
+                        BatchIngredientAction.REUSE,
+                        BatchIngredientAction.COPY_WITH_GENERATED_NAME,
+                        BatchIngredientAction.SKIP,
+                    }
+                    else BatchIngredientAction.SKIP
+                )
+            items.append(BatchIngredientPlanItem(item, action))
+        return BatchIngredientImportPlan(tuple(items))
+
+    async def import_ingredient_batch(
+        self,
+        package_id: int,
+        recipient_user_id: int,
+        conflict_decisions: dict[str, str],
+        *,
+        now: datetime | None = None,
+    ) -> BatchIngredientImportResult:
+        completed_at = now or datetime.now(UTC)
+        access = await self.get_ingredient_package(
+            package_id,
+            recipient_user_id,
+            now=completed_at,
+        )
+        if access.is_owner:
+            raise ValidationError("Нельзя импортировать собственную ссылку.")
+        plan = await self.build_ingredient_batch_plan(
+            recipient_user_id,
+            access.payload,
+            conflict_decisions,
+        )
+        if (
+            access.previous_import is not None
+            and access.previous_import.status == ShareImportStatus.COMPLETED
+        ):
+            return BatchIngredientImportResult(
+                access.previous_import,
+                plan,
+                (),
+                already_completed=True,
+            )
+
+        import_record, claimed = await self._repository.claim_import(
+            package_id,
+            recipient_user_id,
+        )
+        if not claimed:
+            if import_record.status == ShareImportStatus.PROCESSING:
+                raise ValidationError(
+                    "Этот импорт уже обрабатывается. Повторите проверку чуть позже."
+                )
+            return BatchIngredientImportResult(
+                import_record,
+                plan,
+                (),
+                already_completed=True,
+            )
+
+        created: list[Ingredient] = []
+        created_count = 0
+        reused_count = 0
+        skipped_count = 0
+        for item in plan.items:
+            if item.action is BatchIngredientAction.CREATE:
+                created.append(
+                    await self._create_imported_ingredient(
+                        recipient_user_id,
+                        item.preflight.incoming,
+                    )
+                )
+                created_count += 1
+            elif item.action is BatchIngredientAction.REUSE:
+                if item.preflight.existing is None:
+                    raise ValidationError(
+                        "План импорта устарел. Откройте ссылку заново."
+                    )
+                reused_count += 1
+            elif item.action is BatchIngredientAction.COPY_WITH_GENERATED_NAME:
+                created.append(
+                    await self._create_unique_copy(
+                        recipient_user_id,
+                        item.preflight.incoming,
+                    )
+                )
+                created_count += 1
+            else:
+                skipped_count += 1
+
+        completed = await self._repository.complete_ingredient_import(
+            import_record.id,
+            created_count=created_count,
+            reused_count=reused_count,
+            skipped_count=skipped_count,
+            completed_at=completed_at,
+        )
+        return BatchIngredientImportResult(completed, plan, tuple(created))
+
     async def import_ingredient(
         self,
         package_id: int,
@@ -294,6 +535,8 @@ class SharingService:
             recipient_user_id,
             now=completed_at,
         )
+        if len(access.payload.ingredients) != 1:
+            raise InvalidShareLinkError("Ссылка предназначена для набора ингредиентов.")
         if access.is_owner:
             raise ValidationError("Нельзя импортировать собственную ссылку.")
         incoming = access.payload.ingredients[0]
@@ -422,11 +665,17 @@ class SharingService:
             ) from error
         if (
             not isinstance(payload, IngredientSharePayload)
-            or len(payload.ingredients) != 1
             or package.package_type != SharePackageType.INGREDIENTS
             or package.payload_version != payload.version
+            or package.item_count != len(payload.ingredients)
         ):
             raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
+        try:
+            validate_share_payload_limits(payload, self._limits)
+        except SharePayloadLimitError as error:
+            raise InvalidShareLinkError(
+                "Ссылка недействительна или была отозвана."
+            ) from error
         previous_import = await self._repository.get_import(
             package.id,
             recipient_user_id,

@@ -6,10 +6,16 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from app.db.models import Ingredient
 from app.db.models.share import SharePackage, SharePackageType
 from app.exceptions import ValidationError
 from app.repositories.shares import ShareTokenHashCollisionError
-from app.services.sharing import SharingService
+from app.services.sharing import (
+    BatchIngredientAction,
+    IngredientConflictType,
+    IngredientPreflight,
+    SharingService,
+)
 from app.sharing.links import build_share_deep_link, build_telegram_share_url
 from app.sharing.payloads import (
     DishSharePayload,
@@ -231,3 +237,137 @@ async def test_sharing_service_rejects_link_creation_without_bot_username() -> N
         )
 
     repository.create_package.assert_not_awaited()
+
+
+async def test_batch_snapshot_preserves_selected_order_and_rechecks_sources() -> None:
+    share_repository = Mock()
+    share_repository.create_package = AsyncMock(
+        return_value=SharePackage(
+            id=12,
+            owner_user_id=10,
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+        )
+    )
+    first = Ingredient(
+        id=1,
+        user_id=10,
+        name="Первый",
+        name_normalized="первый",
+        kcal_per_100g=Decimal("1"),
+        protein_per_100g=Decimal("2"),
+        fat_per_100g=Decimal("3"),
+        carbs_per_100g=Decimal("4"),
+    )
+    second = Ingredient(
+        id=2,
+        user_id=10,
+        name="Второй",
+        name_normalized="второй",
+        kcal_per_100g=Decimal("5"),
+        protein_per_100g=Decimal("6"),
+        fat_per_100g=Decimal("7"),
+        carbs_per_100g=Decimal("8"),
+    )
+    ingredient_repository = Mock()
+    ingredient_repository.get_by_ids = AsyncMock(return_value=[first, second])
+    service = SharingService(
+        share_repository,
+        bot_username="nutrition_test_bot",
+        link_ttl_days=30,
+        limits=SharePayloadLimits(max_items=20),
+        ingredient_repository=ingredient_repository,
+        token_factory=lambda: "sh_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+
+    await service.create_ingredient_batch_package(10, [2, 1])
+
+    ingredient_repository.get_by_ids.assert_awaited_once_with({1, 2}, 10)
+    stored = share_repository.create_package.await_args.kwargs
+    assert [item["name"] for item in stored["payload"]["ingredients"]] == [
+        "Второй",
+        "Первый",
+    ]
+    assert stored["item_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("ingredient_ids", "message"),
+    [
+        ([], "хотя бы один"),
+        ([1, 1], "дважды"),
+        (list(range(21)), "не более 20"),
+    ],
+)
+async def test_batch_snapshot_rejects_empty_duplicate_and_oversized_selection(
+    ingredient_ids: list[int],
+    message: str,
+) -> None:
+    ingredient_repository = Mock(get_by_ids=AsyncMock())
+    service = SharingService(
+        Mock(),
+        bot_username="nutrition_test_bot",
+        link_ttl_days=30,
+        limits=SharePayloadLimits(max_items=20),
+        ingredient_repository=ingredient_repository,
+    )
+
+    with pytest.raises(ValidationError, match=message):
+        await service.create_ingredient_batch_package(10, ingredient_ids)
+
+    ingredient_repository.get_by_ids.assert_not_awaited()
+
+
+async def test_batch_plan_uses_safe_defaults_for_conflicts() -> None:
+    incoming_new = ingredient("i1", name="Новый")
+    incoming_exact = ingredient("i2", name="Точный")
+    incoming_conflict = ingredient("i3", name="Конфликт")
+    existing = Ingredient(
+        id=5,
+        user_id=20,
+        name="Конфликт",
+        name_normalized="конфликт",
+        kcal_per_100g=Decimal("100"),
+        protein_per_100g=Decimal("10"),
+        fat_per_100g=Decimal("10"),
+        carbs_per_100g=Decimal("10"),
+    )
+    service = SharingService(
+        Mock(),
+        bot_username="nutrition_test_bot",
+        link_ttl_days=30,
+        limits=SharePayloadLimits(),
+    )
+    service.preflight_ingredient_batch = AsyncMock(  # type: ignore[method-assign]
+        return_value=sharing_preflight(
+            IngredientPreflight(IngredientConflictType.NEW, incoming_new),
+            IngredientPreflight(
+                IngredientConflictType.EXACT_SAME, incoming_exact, existing
+            ),
+            IngredientPreflight(
+                IngredientConflictType.NAME_CONFLICT, incoming_conflict, existing
+            ),
+        )
+    )
+    payload = IngredientSharePayload(
+        ingredients=[incoming_new, incoming_exact, incoming_conflict]
+    )
+
+    default_plan = await service.build_ingredient_batch_plan(20, payload, {})
+    copy_plan = await service.build_ingredient_batch_plan(
+        20,
+        payload,
+        {"i3": BatchIngredientAction.COPY_WITH_GENERATED_NAME.value},
+    )
+
+    assert [item.action for item in default_plan.items] == [
+        BatchIngredientAction.CREATE,
+        BatchIngredientAction.REUSE,
+        BatchIngredientAction.SKIP,
+    ]
+    assert copy_plan.items[-1].action is BatchIngredientAction.COPY_WITH_GENERATED_NAME
+
+
+def sharing_preflight(*items: IngredientPreflight):
+    from app.services.sharing import BatchIngredientPreflight
+
+    return BatchIngredientPreflight(items)
