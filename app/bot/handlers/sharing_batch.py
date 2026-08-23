@@ -12,7 +12,11 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.actions import confirmation_data
-from app.bot.handlers.sharing import compact_nutrition, sharing_service
+from app.bot.handlers.sharing import (
+    SHARE_BEARER_WARNING,
+    compact_nutrition,
+    sharing_service,
+)
 from app.bot.keyboards.actions import ConfirmActionCallback
 from app.bot.keyboards.ingredients import (
     SHARE_INGREDIENTS_SELECT,
@@ -70,7 +74,9 @@ def batch_created_card(names: list[str], expires_at: str) -> str:
 
 Всего: {len(names)}
 Ссылка действует до {expires_at}.
-Получатель сам подтвердит импорт."""
+Получатель сам подтвердит импорт.
+
+⚠️ {SHARE_BEARER_WARNING}"""
 
 
 def batch_import_preview_card(

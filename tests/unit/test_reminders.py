@@ -17,7 +17,7 @@ from app.db.models.reminder import ReminderSetting, ReminderType
 from app.db.models.user import User
 from app.exceptions import ValidationError
 from app.repositories.reminders import ReminderRecord
-from app.services.reminder_scheduler import ReminderScheduler
+from app.services.reminder_scheduler import SHARE_CLEANUP_JOB_ID, ReminderScheduler
 from app.services.reminders import (
     ReminderDelivery,
     ReminderService,
@@ -202,8 +202,33 @@ async def test_scheduler_restores_jobs_with_local_timezone(monkeypatch) -> None:
         assert str(job.trigger.timezone) == "Asia/Almaty"
         assert job.misfire_grace_time == 1800
         assert job.coalesce
+        assert scheduler._scheduler.get_job(SHARE_CLEANUP_JOB_ID) is not None  # noqa: SLF001
     finally:
         await scheduler.shutdown()
+
+
+async def test_share_cleanup_uses_retention_and_transaction(monkeypatch) -> None:
+    session = Mock()
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    session.begin = Mock(return_value=AsyncMock())
+    session_factory = Mock(return_value=context)
+    cleanup = AsyncMock(return_value=7)
+    service = Mock(cleanup_batch=cleanup)
+    monkeypatch.setattr(
+        "app.services.reminder_scheduler.ShareCleanupService",
+        Mock(return_value=service),
+    )
+    scheduler = ReminderScheduler(
+        Mock(),
+        session_factory,
+        misfire_grace_seconds=1800,
+        share_package_retention_days=45,
+    )
+
+    await scheduler.run_share_cleanup()
+
+    cleanup.assert_awaited_once_with(retention_days=45, batch_size=100)
 
 
 async def test_forbidden_disables_persisted_reminder(monkeypatch) -> None:

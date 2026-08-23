@@ -12,7 +12,11 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.actions import confirmation_data
-from app.bot.handlers.sharing import compact_nutrition, sharing_service
+from app.bot.handlers.sharing import (
+    SHARE_BEARER_WARNING,
+    compact_nutrition,
+    sharing_service,
+)
 from app.bot.keyboards.actions import ConfirmActionCallback
 from app.bot.keyboards.dishes import (
     SHARE_DISHES_SELECT,
@@ -69,7 +73,9 @@ def created_dish_batch_card(names: list[str], expires_at: str) -> str:
 
 Блюд: {len(names)}
 Ссылка действует до {expires_at}.
-Получатель сам настроит конфликты и подтвердит импорт."""
+Получатель сам настроит конфликты и подтвердит импорт.
+
+⚠️ {SHARE_BEARER_WARNING}"""
 
 
 def dish_batch_preview_card(

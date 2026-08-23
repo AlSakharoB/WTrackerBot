@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,7 @@ from app.exceptions import DuplicateError, NotFoundError, ValidationError
 from app.repositories.dishes import DishRecord, DishRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.shares import (
+    OwnedSharePackageRecord,
     ShareRepository,
     ShareTokenHashCollisionError,
 )
@@ -35,6 +37,7 @@ from app.services.nutrition import (
 )
 from app.sharing.links import build_share_deep_link, build_telegram_share_url
 from app.sharing.payloads import (
+    PAYLOAD_VERSION,
     DishSharePayload,
     IngredientSharePayload,
     SharedDish,
@@ -44,6 +47,7 @@ from app.sharing.payloads import (
     SharePayloadLimitError,
     SharePayloadLimits,
     parse_share_payload,
+    raw_share_payload_size,
     serialize_share_payload,
     validate_share_payload_limits,
 )
@@ -55,6 +59,9 @@ from app.sharing.tokens import (
 
 TOKEN_GENERATION_ATTEMPTS = 3
 DB_NUTRITION_QUANTUM = Decimal("0.01")
+SHARE_MANAGEMENT_PAGE_SIZE = 5
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidShareLinkError(ValidationError):
@@ -98,12 +105,34 @@ class DishImportAction(StrEnum):
     UNRESOLVED = "unresolved"
 
 
+class ShareRuntimeStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
+
+
 @dataclass(frozen=True, slots=True)
 class CreatedSharePackage:
     package: SharePackage
     token: str
     deep_link: str
     telegram_share_url: str
+
+
+@dataclass(frozen=True, slots=True)
+class OwnedSharePackage:
+    package: SharePackage
+    title: str
+    runtime_status: ShareRuntimeStatus
+    completed_imports: int
+
+
+@dataclass(frozen=True, slots=True)
+class OwnedSharePackagePage:
+    items: tuple[OwnedSharePackage, ...]
+    page: int
+    pages: int
+    total: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,6 +555,121 @@ class SharingService:
             except ShareTokenHashCollisionError:
                 continue
             deep_link = build_share_deep_link(self._bot_username, token)
+            _log_share_event(
+                "share_package_created",
+                "sharing.package_created",
+                package,
+                user_id=owner_user_id,
+            )
+            return CreatedSharePackage(
+                package=package,
+                token=token,
+                deep_link=deep_link,
+                telegram_share_url=build_telegram_share_url(deep_link, share_text),
+            )
+        raise RuntimeError("Could not allocate a unique share token")
+
+    async def list_owned_packages(
+        self,
+        owner_user_id: int,
+        package_type: SharePackageType,
+        *,
+        page: int = 1,
+        now: datetime | None = None,
+    ) -> OwnedSharePackagePage:
+        requested_page = max(page, 1)
+        records, total = await self._repository.list_owned(
+            owner_user_id,
+            package_type,
+            offset=(requested_page - 1) * SHARE_MANAGEMENT_PAGE_SIZE,
+            limit=SHARE_MANAGEMENT_PAGE_SIZE,
+        )
+        pages = max(
+            1,
+            (total + SHARE_MANAGEMENT_PAGE_SIZE - 1) // SHARE_MANAGEMENT_PAGE_SIZE,
+        )
+        if total and requested_page > pages:
+            requested_page = pages
+            records, total = await self._repository.list_owned(
+                owner_user_id,
+                package_type,
+                offset=(requested_page - 1) * SHARE_MANAGEMENT_PAGE_SIZE,
+                limit=SHARE_MANAGEMENT_PAGE_SIZE,
+            )
+        current_time = now or datetime.now(UTC)
+        return OwnedSharePackagePage(
+            items=tuple(
+                self._owned_package(record, current_time) for record in records
+            ),
+            page=requested_page,
+            pages=pages,
+            total=total,
+        )
+
+    async def get_owned_package(
+        self,
+        package_id: int,
+        owner_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> OwnedSharePackage:
+        record = await self._repository.get_owned_record(package_id, owner_user_id)
+        if record is None:
+            raise NotFoundError("Ссылка не найдена.")
+        return self._owned_package(record, now or datetime.now(UTC))
+
+    async def rotate_package(
+        self,
+        package_id: int,
+        owner_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> CreatedSharePackage:
+        if self._bot_username is None:
+            raise ValidationError("Ссылки для обмена временно недоступны.")
+        existing = await self._repository.get_owned_by_id(package_id, owner_user_id)
+        if existing is None:
+            raise NotFoundError("Ссылка не найдена.")
+        rotated_at = now or datetime.now(UTC)
+        for _ in range(TOKEN_GENERATION_ATTEMPTS):
+            token = self._token_factory()
+            token_hash = hash_share_token(token)
+            if token_hash == existing.token_hash:
+                continue
+            try:
+                package = await self._repository.rotate_owned(
+                    package_id,
+                    owner_user_id,
+                    token_hash=token_hash,
+                    expires_at=rotated_at + timedelta(days=self._link_ttl_days),
+                    rotated_at=rotated_at,
+                )
+            except ShareTokenHashCollisionError:
+                continue
+            if package is None:  # pragma: no cover - owner checked above
+                raise NotFoundError("Ссылка не найдена.")
+            deep_link = build_share_deep_link(self._bot_username, token)
+            title = self._package_title(package)
+            noun = (
+                "блюдом"
+                if package.package_type == SharePackageType.DISHES
+                else "ингредиентом"
+            )
+            if package.item_count > 1:
+                noun = (
+                    "набором блюд"
+                    if package.package_type == SharePackageType.DISHES
+                    else "набором ингредиентов"
+                )
+            share_text = (
+                f"Делюсь {noun} «{title}». Откройте ссылку, чтобы добавить в бот."
+            )
+            _log_share_event(
+                "share_package_rotated",
+                "sharing.package_rotated",
+                package,
+                user_id=owner_user_id,
+            )
             return CreatedSharePackage(
                 package=package,
                 token=token,
@@ -572,8 +716,12 @@ class SharingService:
         recipient_user_id: int,
         *,
         now: datetime | None = None,
+        for_update: bool = False,
     ) -> IngredientPackageAccess:
-        package = await self._repository.get_by_id(package_id)
+        package = await self._repository.get_by_id(
+            package_id,
+            for_update=for_update,
+        )
         return await self._build_ingredient_access(
             package,
             recipient_user_id,
@@ -586,8 +734,12 @@ class SharingService:
         recipient_user_id: int,
         *,
         now: datetime | None = None,
+        for_update: bool = False,
     ) -> DishPackageAccess:
-        package = await self._repository.get_by_id(package_id)
+        package = await self._repository.get_by_id(
+            package_id,
+            for_update=for_update,
+        )
         return await self._build_dish_access(
             package,
             recipient_user_id,
@@ -599,11 +751,31 @@ class SharingService:
         recipient_user_id: int,
         incoming: SharedIngredient,
     ) -> IngredientPreflight:
-        ingredient_repository = self._require_ingredient_repository()
         normalized_name = normalize_search_text(incoming.name)
-        exact = await ingredient_repository.get_by_normalized_name(
+        matches = await self._require_ingredient_repository().find_matches_for_names(
             recipient_user_id,
+            {normalized_name},
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        return self._ingredient_preflight_from_candidates(
+            incoming,
             normalized_name,
+            matches.get(normalized_name, []),
+        )
+
+    @staticmethod
+    def _ingredient_preflight_from_candidates(
+        incoming: SharedIngredient,
+        normalized_name: str,
+        candidates: list[Ingredient],
+    ) -> IngredientPreflight:
+        exact = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.name_normalized == normalized_name
+            ),
+            None,
         )
         if exact is not None:
             conflict_type = (
@@ -613,11 +785,6 @@ class SharingService:
             )
             return IngredientPreflight(conflict_type, incoming, exact)
 
-        candidates = await ingredient_repository.find_similar_names(
-            recipient_user_id,
-            normalized_name,
-            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
-        )
         similar = next(
             (
                 candidate
@@ -642,10 +809,24 @@ class SharingService:
         recipient_user_id: int,
         payload: IngredientSharePayload,
     ) -> BatchIngredientPreflight:
-        items = [
-            await self.preflight_ingredient(recipient_user_id, incoming)
-            for incoming in payload.ingredients
-        ]
+        normalized_names = {
+            normalize_search_text(incoming.name) for incoming in payload.ingredients
+        }
+        matches = await self._require_ingredient_repository().find_matches_for_names(
+            recipient_user_id,
+            normalized_names,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        items = []
+        for incoming in payload.ingredients:
+            normalized_name = normalize_search_text(incoming.name)
+            items.append(
+                self._ingredient_preflight_from_candidates(
+                    incoming,
+                    normalized_name,
+                    matches.get(normalized_name, []),
+                )
+            )
         return BatchIngredientPreflight(tuple(items))
 
     async def preflight_dish(
@@ -656,7 +837,9 @@ class SharingService:
         if len(payload.dishes) != 1:
             raise InvalidShareLinkError("Ссылка не содержит одно блюдо.")
         dish = payload.dishes[0]
-        dish_preflight = await self._preflight_dish_name(recipient_user_id, dish)
+        dish_preflight = (await self._preflight_dish_names(recipient_user_id, [dish]))[
+            0
+        ]
         ingredient_preflight = await self.preflight_ingredient_batch(
             recipient_user_id,
             IngredientSharePayload(ingredients=payload.ingredients),
@@ -673,11 +856,9 @@ class SharingService:
         recipient_user_id: int,
         payload: DishSharePayload,
     ) -> BatchDishPreflight:
-        dishes = tuple(
-            [
-                await self._preflight_dish_name(recipient_user_id, dish)
-                for dish in payload.dishes
-            ]
+        dishes = await self._preflight_dish_names(
+            recipient_user_id,
+            payload.dishes,
         )
         ingredients = await self.preflight_ingredient_batch(
             recipient_user_id,
@@ -685,39 +866,45 @@ class SharingService:
         )
         return BatchDishPreflight(dishes=dishes, ingredients=ingredients)
 
-    async def _preflight_dish_name(
+    async def _preflight_dish_names(
         self,
         recipient_user_id: int,
-        dish: SharedDish,
-    ) -> DishNamePreflight:
-        normalized_name = normalize_search_text(dish.name)
-        candidates = await self._require_dish_repository().find_similar_names(
+        dishes: list[SharedDish],
+    ) -> tuple[DishNamePreflight, ...]:
+        normalized_names = {normalize_search_text(dish.name) for dish in dishes}
+        matches = await self._require_dish_repository().find_matches_for_names(
             recipient_user_id,
-            normalized_name,
+            normalized_names,
             DUPLICATE_NAME_SIMILARITY_THRESHOLD,
         )
-        existing = next(
-            (
-                candidate
-                for candidate in candidates
-                if not names_have_different_numbers(
-                    normalized_name,
-                    candidate.name_normalized,
+        preflights: list[DishNamePreflight] = []
+        for dish in dishes:
+            normalized_name = normalize_search_text(dish.name)
+            existing = next(
+                (
+                    candidate
+                    for candidate in matches.get(normalized_name, [])
+                    if not names_have_different_numbers(
+                        normalized_name,
+                        candidate.name_normalized,
+                    )
+                ),
+                None,
+            )
+            if existing is None:
+                conflict_type = DishConflictType.NEW
+            elif existing.name_normalized == normalized_name:
+                conflict_type = DishConflictType.NAME_CONFLICT
+            else:
+                conflict_type = DishConflictType.SIMILAR_CONFLICT
+            preflights.append(
+                DishNamePreflight(
+                    dish=dish,
+                    conflict_type=conflict_type,
+                    existing=existing,
                 )
-            ),
-            None,
-        )
-        if existing is None:
-            conflict_type = DishConflictType.NEW
-        elif existing.name_normalized == normalized_name:
-            conflict_type = DishConflictType.NAME_CONFLICT
-        else:
-            conflict_type = DishConflictType.SIMILAR_CONFLICT
-        return DishNamePreflight(
-            dish=dish,
-            conflict_type=conflict_type,
-            existing=existing,
-        )
+            )
+        return tuple(preflights)
 
     async def build_dish_batch_import_plan(
         self,
@@ -786,6 +973,7 @@ class SharingService:
             package_id,
             recipient_user_id,
             now=completed_at,
+            for_update=True,
         )
         if access.is_owner:
             raise ValidationError("Нельзя импортировать собственную ссылку.")
@@ -898,6 +1086,12 @@ class SharingService:
             skipped_dishes_count=skipped_dishes,
             completed_at=completed_at,
         )
+        _log_share_event(
+            "share_import_completed",
+            "sharing.import_completed",
+            access.package,
+            user_id=recipient_user_id,
+        )
         return BatchDishImportResult(completed, plan, tuple(created_dishes))
 
     async def build_dish_import_plan(
@@ -957,6 +1151,7 @@ class SharingService:
             package_id,
             recipient_user_id,
             now=completed_at,
+            for_update=True,
         )
         if access.is_owner:
             raise ValidationError("Нельзя импортировать собственную ссылку.")
@@ -1069,6 +1264,12 @@ class SharingService:
             skipped_dishes_count=0,
             completed_at=completed_at,
         )
+        _log_share_event(
+            "share_import_completed",
+            "sharing.import_completed",
+            access.package,
+            user_id=recipient_user_id,
+        )
         return DishImportResult(completed, plan, details)
 
     async def build_ingredient_batch_plan(
@@ -1123,6 +1324,7 @@ class SharingService:
             package_id,
             recipient_user_id,
             now=completed_at,
+            for_update=True,
         )
         if access.is_owner:
             raise ValidationError("Нельзя импортировать собственную ссылку.")
@@ -1195,6 +1397,12 @@ class SharingService:
             skipped_count=skipped_count,
             completed_at=completed_at,
         )
+        _log_share_event(
+            "share_import_completed",
+            "sharing.import_completed",
+            access.package,
+            user_id=recipient_user_id,
+        )
         return BatchIngredientImportResult(completed, plan, tuple(created))
 
     async def import_ingredient(
@@ -1210,6 +1418,7 @@ class SharingService:
             package_id,
             recipient_user_id,
             now=completed_at,
+            for_update=True,
         )
         if len(access.payload.ingredients) != 1:
             raise InvalidShareLinkError("Ссылка предназначена для набора ингредиентов.")
@@ -1301,6 +1510,12 @@ class SharingService:
             skipped_count=skipped_count,
             completed_at=completed_at,
         )
+        _log_share_event(
+            "share_import_completed",
+            "sharing.import_completed",
+            access.package,
+            user_id=recipient_user_id,
+        )
         return IngredientImportResult(completed, preflight, ingredient)
 
     async def revoke_package(
@@ -1316,8 +1531,43 @@ class SharingService:
             now or datetime.now(UTC),
         )
         if package is None:
-            raise NotFoundError("Ссылка не найдена или уже отозвана.")
+            raise NotFoundError("Ссылка не найдена.")
+        _log_share_event(
+            "share_package_revoked",
+            "sharing.package_revoked",
+            package,
+            user_id=owner_user_id,
+        )
         return package
+
+    @staticmethod
+    def _owned_package(
+        record: OwnedSharePackageRecord,
+        now: datetime,
+    ) -> OwnedSharePackage:
+        package = record.package
+        if package.status == SharePackageStatus.REVOKED:
+            status = ShareRuntimeStatus.REVOKED
+        elif now >= package.expires_at:
+            status = ShareRuntimeStatus.EXPIRED
+        else:
+            status = ShareRuntimeStatus.ACTIVE
+        return OwnedSharePackage(
+            package=package,
+            title=SharingService._package_title(package),
+            runtime_status=status,
+            completed_imports=record.completed_imports,
+        )
+
+    @staticmethod
+    def _package_title(package: SharePackage) -> str:
+        try:
+            payload = parse_share_payload(package.payload)
+        except ValueError:
+            return "Недоступное содержимое"
+        if isinstance(payload, DishSharePayload):
+            return payload.dishes[0].name if payload.dishes else "Пустой пакет"
+        return payload.ingredients[0].name if payload.ingredients else "Пустой пакет"
 
     async def _build_ingredient_access(
         self,
@@ -1333,25 +1583,13 @@ class SharingService:
             raise ExpiredShareLinkError(
                 "Срок действия ссылки истёк. Попросите отправителя создать новую."
             )
-        try:
-            payload = parse_share_payload(package.payload)
-        except ValueError as error:
-            raise InvalidShareLinkError(
-                "Ссылка недействительна или была отозвана."
-            ) from error
+        payload = self._validated_package_payload(package)
         if (
             not isinstance(payload, IngredientSharePayload)
             or package.package_type != SharePackageType.INGREDIENTS
-            or package.payload_version != payload.version
             or package.item_count != len(payload.ingredients)
         ):
             raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
-        try:
-            validate_share_payload_limits(payload, self._limits)
-        except SharePayloadLimitError as error:
-            raise InvalidShareLinkError(
-                "Ссылка недействительна или была отозвана."
-            ) from error
         previous_import = await self._repository.get_import(
             package.id,
             recipient_user_id,
@@ -1377,25 +1615,14 @@ class SharingService:
             raise ExpiredShareLinkError(
                 "Срок действия ссылки истёк. Попросите отправителя создать новую."
             )
-        try:
-            payload = parse_share_payload(package.payload)
-        except ValueError as error:
-            raise InvalidShareLinkError(
-                "Ссылка недействительна или была отозвана."
-            ) from error
+        payload = self._validated_package_payload(package)
         if (
             not isinstance(payload, DishSharePayload)
             or package.package_type != SharePackageType.DISHES
-            or package.payload_version != payload.version
             or package.item_count != len(payload.dishes)
         ):
             raise InvalidShareLinkError("Ссылка недействительна или была отозвана.")
-        try:
-            validate_share_payload_limits(payload, self._limits)
-        except SharePayloadLimitError as error:
-            raise InvalidShareLinkError(
-                "Ссылка недействительна или была отозвана."
-            ) from error
+        self._recalculate_dish_nutrition(payload)
         previous_import = await self._repository.get_import(
             package.id,
             recipient_user_id,
@@ -1406,6 +1633,39 @@ class SharingService:
             previous_import=previous_import,
             is_owner=package.owner_user_id == recipient_user_id,
         )
+
+    def _validated_package_payload(self, package: SharePackage) -> SharePayload:
+        try:
+            if raw_share_payload_size(package.payload) > self._limits.max_payload_bytes:
+                raise SharePayloadLimitError("Share payload is too large")
+            if package.payload_version != PAYLOAD_VERSION:
+                raise ValueError("Unsupported share payload version")
+            payload = parse_share_payload(package.payload)
+            if package.payload_version != payload.version:
+                raise ValueError("Share payload version mismatch")
+            validate_share_payload_limits(payload, self._limits)
+            return payload
+        except ValueError as error:
+            raise InvalidShareLinkError(
+                "Ссылка недействительна или была отозвана."
+            ) from error
+
+    @staticmethod
+    def _recalculate_dish_nutrition(payload: DishSharePayload) -> None:
+        ingredients = {item.key: item for item in payload.ingredients}
+        for dish in payload.dishes:
+            NutritionService.calculate_dish_nutrition(
+                NutritionComponent(
+                    nutrition_per_100g=NutritionValues(
+                        kcal=ingredients[component.ingredient_key].kcal_per_100g,
+                        protein=ingredients[component.ingredient_key].protein_per_100g,
+                        fat=ingredients[component.ingredient_key].fat_per_100g,
+                        carbs=ingredients[component.ingredient_key].carbs_per_100g,
+                    ),
+                    grams=component.grams,
+                )
+                for component in dish.components
+            )
 
     async def _create_imported_ingredient(
         self,
@@ -1511,6 +1771,43 @@ class SharingService:
         if self._dish_repository is None:
             raise RuntimeError("Dish repository is required for this operation")
         return self._dish_repository
+
+
+class ShareCleanupService:
+    def __init__(self, repository: ShareRepository) -> None:
+        self._repository = repository
+
+    async def cleanup_batch(
+        self,
+        *,
+        retention_days: int,
+        batch_size: int,
+        now: datetime | None = None,
+    ) -> int:
+        current_time = now or datetime.now(UTC)
+        return await self._repository.delete_stale_packages(
+            cutoff=current_time - timedelta(days=retention_days),
+            batch_size=batch_size,
+        )
+
+
+def _log_share_event(
+    message: str,
+    operation: str,
+    package: SharePackage,
+    *,
+    user_id: int,
+) -> None:
+    logger.info(
+        message,
+        extra={
+            "operation": operation,
+            "user_id": user_id,
+            "package_id": package.id,
+            "package_type": str(package.package_type),
+            "item_count": package.item_count,
+        },
+    )
 
 
 def _nutrition_values(incoming: SharedIngredient) -> dict[str, Decimal]:

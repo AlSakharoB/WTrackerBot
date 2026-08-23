@@ -104,6 +104,11 @@ Index(
     SharePackage.status,
     SharePackage.expires_at,
 )
+Index(
+    "ix_share_packages_status_revoked_at",
+    SharePackage.status,
+    SharePackage.revoked_at,
+)
 
 
 class ShareImport(Base):

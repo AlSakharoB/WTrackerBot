@@ -80,6 +80,43 @@ def test_setup_logging_redacts_known_and_pattern_secrets() -> None:
     assert "[REDACTED" in rendered
 
 
+def test_setup_logging_redacts_share_tokens_in_text_urls_and_tracebacks() -> None:
+    logger = logging.getLogger("tests.logging")
+    share_token = "sh_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    share_url = f"https://t.me/nutrition_test_bot?start={share_token}"
+
+    with configured_logging() as output:
+        try:
+            raise RuntimeError(f"failed URL {share_url}")
+        except RuntimeError:
+            logger.exception("open token=%s", share_token)
+
+    rendered = output.getvalue()
+    assert share_token not in rendered
+    assert "[REDACTED_SHARE_TOKEN]" in rendered
+
+
+def test_share_event_context_is_structured_without_payload() -> None:
+    logger = logging.getLogger("tests.logging")
+
+    with configured_logging() as output:
+        logger.info(
+            "share_package_created",
+            extra={
+                "operation": "sharing.package_created",
+                "package_id": 17,
+                "package_type": "ingredients",
+                "item_count": 2,
+            },
+        )
+
+    rendered = output.getvalue()
+    assert "package_id=17" in rendered
+    assert "package_type=ingredients" in rendered
+    assert "item_count=2" in rendered
+    assert "payload" not in rendered
+
+
 def test_aiogram_completion_info_is_suppressed_to_avoid_duplicate_logs() -> None:
     logger = logging.getLogger("aiogram.event")
 

@@ -162,10 +162,25 @@ RATE_LIMIT_SEARCH_COUNT=5
 RATE_LIMIT_SEARCH_WINDOW_SECONDS=10
 RATE_LIMIT_WEIGHT_CHART_COUNT=3
 RATE_LIMIT_WEIGHT_CHART_WINDOW_SECONDS=60
+RATE_LIMIT_SHARE_CREATE_COUNT=10
+RATE_LIMIT_SHARE_CREATE_WINDOW_SECONDS=60
+RATE_LIMIT_SHARE_OPEN_COUNT=20
+RATE_LIMIT_SHARE_OPEN_WINDOW_SECONDS=60
+RATE_LIMIT_SHARE_IMPORT_COUNT=10
+RATE_LIMIT_SHARE_IMPORT_WINDOW_SECONDS=60
+RATE_LIMIT_SHARE_ROTATE_COUNT=5
+RATE_LIMIT_SHARE_ROTATE_WINDOW_SECONDS=60
 RATE_LIMIT_NOTICE_COOLDOWN_SECONDS=5
 ACTION_LOCK_TTL_SECONDS=20
 REMINDER_MISFIRE_GRACE_SECONDS=1800
+SHARE_LINK_TTL_DAYS=30
+SHARE_PACKAGE_RETENTION_DAYS=30
 ```
+
+Истёкшие и отозванные share-пакеты удаляются scheduler небольшими пачками после
+`SHARE_PACKAGE_RETENTION_DAYS`. В разделах ингредиентов и блюд экран
+`📦 Мои ссылки` позволяет посмотреть статус и число завершённых импортов,
+отозвать ссылку или выпустить новый token без изменения snapshot пакета.
 
 После отправки сообщения боту свой Telegram ID можно увидеть как `user_id` в
 серверных логах. Одинаковые ошибки агрегируются в течение cooldown, а ожидаемые
@@ -187,6 +202,12 @@ Rate limiter хранится в памяти одного процесса. П�
 другие пользователи продолжают работать независимо. После рестарта buckets
 обнуляются. Для нескольких replicas storage потребуется перенести в Redis или
 PostgreSQL.
+
+Для share-ссылок лимиты `SHARE_CREATE`, `SHARE_OPEN`, `SHARE_IMPORT` и
+`SHARE_ROTATE` считаются по Telegram user ID. Они не привязаны к token, поэтому
+действия одного пользователя не блокируют пакет для остальных получателей.
+Share-token считается bearer secret, хранится в БД только как SHA-256 hash и
+редактируется в обычных сообщениях, URL и traceback серверного лога.
 
 PostgreSQL доступен с хоста только через `127.0.0.1`. Порт можно изменить
 через `POSTGRES_PORT` в `.env`.

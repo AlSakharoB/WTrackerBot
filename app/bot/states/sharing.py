@@ -22,3 +22,7 @@ class ShareIngredientSelectionStates(StatesGroup):
 class ShareDishSelectionStates(StatesGroup):
     selecting = State()
     wait_search_query = State()
+
+
+class ShareManagementStates(StatesGroup):
+    confirmation = State()

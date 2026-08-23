@@ -16,6 +16,7 @@ INGREDIENTS_NOOP = "ingredients:noop"
 INGREDIENT_CREATE_RESTART = "ingredient_create:restart"
 INGREDIENT_CANCEL = "ingredient:cancel"
 SHARE_INGREDIENTS_SELECT = "share:ingredients:select"
+SHARE_INGREDIENTS_MANAGE = "shm:list:ingredients:0:1"
 
 
 class IngredientsPageCallback(CallbackData, prefix="ingredients"):
@@ -55,6 +56,12 @@ def build_ingredients_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="📤 Поделиться несколькими",
                     callback_data=SHARE_INGREDIENTS_SELECT,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Мои ссылки",
+                    callback_data=SHARE_INGREDIENTS_MANAGE,
                 )
             ],
             [

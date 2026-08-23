@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import String, column, delete, func, select, true, update, values
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,6 +87,61 @@ class DishRepository:
             .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
         )
         return list((await self._session.scalars(statement)).all())
+
+    async def find_matches_for_names(
+        self,
+        user_id: int,
+        normalized_names: set[str],
+        similarity_threshold: Decimal,
+    ) -> dict[str, list[Dish]]:
+        if not normalized_names:
+            return {}
+        incoming = (
+            values(
+                column("incoming_name", String),
+                name="incoming_dish_names",
+            )
+            .data([(name,) for name in sorted(normalized_names)])
+            .cte()
+        )
+        similarity = func.similarity(
+            Dish.name_normalized,
+            incoming.c.incoming_name,
+        )
+        candidates = (
+            select(
+                Dish.id.label("dish_id"),
+                similarity.label("similarity"),
+            )
+            .select_from(Dish)
+            .where(
+                Dish.user_id == user_id,
+                similarity >= float(similarity_threshold),
+            )
+            .order_by(similarity.desc(), Dish.name_normalized, Dish.id)
+            .limit(DUPLICATE_NAME_CANDIDATE_LIMIT)
+            .correlate(incoming)
+            .lateral("candidate_dishes")
+        )
+        statement = (
+            select(incoming.c.incoming_name, Dish)
+            .select_from(incoming)
+            .join(candidates, true())
+            .join(
+                Dish,
+                Dish.id == candidates.c.dish_id,
+            )
+            .order_by(
+                incoming.c.incoming_name,
+                candidates.c.similarity.desc(),
+                Dish.name_normalized,
+                Dish.id,
+            )
+        )
+        matches = {name: [] for name in normalized_names}
+        for incoming_name, dish in (await self._session.execute(statement)).all():
+            matches[str(incoming_name)].append(dish)
+        return matches
 
     async def replace(
         self,

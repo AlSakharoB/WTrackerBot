@@ -12,6 +12,13 @@ from app.db.models.goal import GoalStatus, WeightGoal
 from app.db.models.ingredient import Ingredient
 from app.db.models.nutrition_goal import NutritionGoal
 from app.db.models.reminder import ReminderSetting, ReminderType
+from app.db.models.share import (
+    ShareImport,
+    ShareImportStatus,
+    SharePackage,
+    SharePackageStatus,
+    SharePackageType,
+)
 from app.db.models.user import User
 from app.db.models.weight import WeightEntry
 from app.repositories.privacy import PrivacyRepository
@@ -182,3 +189,56 @@ async def test_delete_rolls_back_all_steps_on_mid_operation_error(
     assert nutrition_goal_count == 1
     reminder_count = await session.scalar(select(func.count(ReminderSetting.id)))
     assert reminder_count == 1
+
+
+async def test_privacy_delete_removes_sharing_metadata_not_recipient_owned_rows(
+    session: AsyncSession,
+) -> None:
+    owner = await create_user(session, 9780000004)
+    recipient = await create_user(session, 9780000005)
+    imported_ingredient = Ingredient(
+        user_id=recipient.id,
+        name="Imported",
+        name_normalized="imported",
+        kcal_per_100g=Decimal("100"),
+        protein_per_100g=Decimal("10"),
+        fat_per_100g=Decimal("5"),
+        carbs_per_100g=Decimal("15"),
+    )
+    session.add(imported_ingredient)
+    package = SharePackage(
+        owner_user_id=owner.id,
+        token_hash="a" * 64,
+        package_type=SharePackageType.INGREDIENTS,
+        payload_version=1,
+        payload={"version": 1, "type": "ingredients", "ingredients": []},
+        item_count=1,
+        status=SharePackageStatus.ACTIVE,
+        expires_at=datetime.now(UTC),
+    )
+    session.add(package)
+    await session.flush()
+    session.add(
+        ShareImport(
+            package_id=package.id,
+            recipient_user_id=recipient.id,
+            status=ShareImportStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+    owner_summary = await privacy_service(PrivacyRepository(session)).summary(owner.id)
+    recipient_summary = await privacy_service(PrivacyRepository(session)).summary(
+        recipient.id
+    )
+    assert owner_summary.share_packages == 1
+    assert recipient_summary.imported_packages == 1
+
+    await privacy_service(PrivacyRepository(session)).clear_user_data(owner.id)
+
+    assert await session.get(SharePackage, package.id) is None
+    assert await session.get(Ingredient, imported_ingredient.id) is not None
+    assert (
+        await privacy_service(PrivacyRepository(session)).summary(recipient.id)
+    ).imported_packages == 0

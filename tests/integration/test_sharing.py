@@ -1,11 +1,22 @@
+import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Dish, DishIngredient, Ingredient, ShareImport, User
+from app.db.models import (
+    Dish,
+    DishIngredient,
+    Ingredient,
+    ShareImport,
+    SharePackage,
+    User,
+)
+from app.db.models.share import SharePackageType
+from app.db.session import create_database_engine, create_session_factory
 from app.exceptions import NotFoundError, ValidationError
 from app.repositories.dishes import DishRepository
 from app.repositories.ingredients import IngredientRepository
@@ -18,6 +29,8 @@ from app.services.sharing import (
     IngredientConflictType,
     IngredientImportResolution,
     InvalidShareLinkError,
+    ShareCleanupService,
+    ShareRuntimeStatus,
     SharingService,
 )
 from app.sharing.payloads import (
@@ -326,11 +339,311 @@ async def test_expired_revoked_and_invalid_tokens_are_expected_errors(
     with pytest.raises(NotFoundError):
         await service.revoke_package(revoked.package.id, recipient.id)
     await service.revoke_package(revoked.package.id, owner.id)
-    with pytest.raises(InvalidShareLinkError):
+    with pytest.raises(InvalidShareLinkError) as revoked_error:
         await service.resolve_ingredient_token(revoked.token, recipient.id)
 
-    with pytest.raises(InvalidShareLinkError):
+    with pytest.raises(InvalidShareLinkError) as unknown_error:
         await service.resolve_ingredient_token("sh_invalid", recipient.id)
+    assert str(revoked_error.value) == str(unknown_error.value)
+
+
+async def test_database_payload_is_revalidated_before_every_read(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000057, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000058, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    source = ingredient_model(owner.id)
+    session.add(source)
+    await session.flush()
+    service = sharing_service(session)
+
+    unsupported = await service.create_ingredient_package(owner.id, source.id)
+    unsupported.package.payload_version = 2
+    await session.flush()
+    with pytest.raises(InvalidShareLinkError):
+        await service.resolve_ingredient_token(unsupported.token, recipient.id)
+
+    malformed = await service.create_ingredient_package(owner.id, source.id)
+    malformed.package.payload = {
+        "version": 1,
+        "type": "ingredients",
+        "ingredients": [
+            {
+                "key": "i1",
+                "name": "Bad",
+                "kcal_per_100g": 100.0,
+                "protein_per_100g": "1",
+                "fat_per_100g": "1",
+                "carbs_per_100g": "1",
+            }
+        ],
+    }
+    await session.flush()
+    with pytest.raises(InvalidShareLinkError):
+        await service.resolve_ingredient_token(malformed.token, recipient.id)
+
+    oversized = await service.create_ingredient_package(owner.id, source.id)
+    oversized.package.payload = oversized.package.payload | {"unexpected": "x" * 2048}
+    await session.flush()
+    strict_size_service = SharingService(
+        ShareRepository(session),
+        bot_username="nutrition_test_bot",
+        link_ttl_days=30,
+        limits=SharePayloadLimits(max_payload_bytes=1024),
+        ingredient_repository=IngredientRepository(session),
+        dish_repository=DishRepository(session),
+    )
+    with pytest.raises(InvalidShareLinkError):
+        await strict_size_service.resolve_ingredient_token(
+            oversized.token,
+            recipient.id,
+        )
+
+
+async def test_concurrent_imports_are_serialized_per_package_and_recipient() -> None:
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if database_url is None:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    telegram_ids = [9951000301, 9951000302, 9951000303, 9951000304]
+    try:
+        async with session_factory() as setup_session, setup_session.begin():
+            await setup_session.execute(
+                delete(User).where(User.telegram_id.in_(telegram_ids))
+            )
+            owner = User(telegram_id=telegram_ids[0], timezone="Europe/Moscow")
+            recipients = [
+                User(telegram_id=telegram_id, timezone="Europe/Moscow")
+                for telegram_id in telegram_ids[1:]
+            ]
+            setup_session.add_all([owner, *recipients])
+            await setup_session.flush()
+            source = ingredient_model(owner.id)
+            setup_session.add(source)
+            await setup_session.flush()
+            setup_service = sharing_service(setup_session)
+            same_recipient_package = await setup_service.create_ingredient_package(
+                owner.id,
+                source.id,
+            )
+            multi_recipient_package = await setup_service.create_ingredient_package(
+                owner.id,
+                source.id,
+            )
+            same_package_id = same_recipient_package.package.id
+            multi_package_id = multi_recipient_package.package.id
+            recipient_ids = [recipient.id for recipient in recipients]
+
+        async def import_package(package_id: int, recipient_id: int) -> bool:
+            async with session_factory() as import_session, import_session.begin():
+                result = await sharing_service(import_session).import_ingredient(
+                    package_id,
+                    recipient_id,
+                    IngredientImportResolution.ADD,
+                )
+                return result.already_completed
+
+        same_results = await asyncio.gather(
+            import_package(same_package_id, recipient_ids[0]),
+            import_package(same_package_id, recipient_ids[0]),
+        )
+        multi_results = await asyncio.gather(
+            import_package(multi_package_id, recipient_ids[1]),
+            import_package(multi_package_id, recipient_ids[2]),
+        )
+
+        assert sorted(same_results) == [False, True]
+        assert multi_results == [False, False]
+        async with session_factory() as check_session:
+            same_imports = await check_session.scalar(
+                select(func.count(ShareImport.id)).where(
+                    ShareImport.package_id == same_package_id,
+                    ShareImport.recipient_user_id == recipient_ids[0],
+                )
+            )
+            multi_imports = await check_session.scalar(
+                select(func.count(ShareImport.id)).where(
+                    ShareImport.package_id == multi_package_id
+                )
+            )
+            assert same_imports == 1
+            assert multi_imports == 2
+    finally:
+        async with session_factory() as cleanup_session, cleanup_session.begin():
+            await cleanup_session.execute(
+                delete(User).where(User.telegram_id.in_(telegram_ids))
+            )
+        await engine.dispose()
+
+
+async def test_final_import_rechecks_revoke_and_expiry_after_preview(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000305, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000306, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    source = ingredient_model(owner.id)
+    session.add(source)
+    await session.flush()
+    service = sharing_service(session)
+    now = datetime(2026, 8, 24, 14, tzinfo=UTC)
+
+    revoked = await service.create_ingredient_package(owner.id, source.id)
+    await service.resolve_ingredient_token(revoked.token, recipient.id, now=now)
+    await service.revoke_package(revoked.package.id, owner.id, now=now)
+    with pytest.raises(InvalidShareLinkError):
+        await service.import_ingredient(
+            revoked.package.id,
+            recipient.id,
+            IngredientImportResolution.ADD,
+            now=now,
+        )
+
+    expired = await service.create_ingredient_package(owner.id, source.id)
+    await service.resolve_ingredient_token(expired.token, recipient.id, now=now)
+    expired.package.expires_at = now
+    await session.flush()
+    with pytest.raises(ExpiredShareLinkError):
+        await service.import_ingredient(
+            expired.package.id,
+            recipient.id,
+            IngredientImportResolution.ADD,
+            now=now,
+        )
+
+
+async def test_owner_management_revoke_rotation_and_import_privacy(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000053, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000054, timezone="Europe/Moscow")
+    foreign_owner = User(telegram_id=9951000055, timezone="Europe/Moscow")
+    session.add_all([owner, recipient, foreign_owner])
+    await session.flush()
+    source = ingredient_model(owner.id)
+    foreign_source = ingredient_model(foreign_owner.id, name="Молоко")
+    session.add_all([source, foreign_source])
+    await session.flush()
+    service = sharing_service(session)
+    now = datetime(2026, 8, 24, 10, tzinfo=UTC)
+    created = await service.create_ingredient_package(owner.id, source.id)
+    foreign = await service.create_ingredient_package(
+        foreign_owner.id, foreign_source.id
+    )
+    imported = await service.import_ingredient(
+        created.package.id,
+        recipient.id,
+        IngredientImportResolution.ADD,
+    )
+    imported_ingredient_id = imported.ingredient.id  # type: ignore[union-attr]
+    guessed_token = f"sh_{created.package.id:032d}"
+    with pytest.raises(InvalidShareLinkError):
+        await service.resolve_ingredient_token(guessed_token, foreign_owner.id)
+    foreign_access = await service.resolve_ingredient_token(
+        created.token,
+        foreign_owner.id,
+    )
+    assert foreign_access.package.id == created.package.id
+    foreign_import = await service.import_ingredient(
+        created.package.id,
+        foreign_owner.id,
+        IngredientImportResolution.ADD,
+    )
+    assert foreign_import.ingredient is not None
+    assert foreign_import.ingredient.user_id == foreign_owner.id
+    with pytest.raises(NotFoundError):
+        await service.revoke_package(created.package.id, foreign_owner.id, now=now)
+
+    page = await service.list_owned_packages(
+        owner.id,
+        SharePackageType.INGREDIENTS,
+        now=now,
+    )
+    assert [item.package.id for item in page.items] == [created.package.id]
+    assert page.items[0].completed_imports == 2
+    assert page.items[0].runtime_status is ShareRuntimeStatus.ACTIVE
+    assert foreign.package.id not in {item.package.id for item in page.items}
+
+    old_token = created.token
+    original_payload = created.package.payload.copy()
+    await service.revoke_package(created.package.id, owner.id, now=now)
+    repeated = await service.revoke_package(created.package.id, owner.id, now=now)
+    assert repeated.revoked_at == now
+    with pytest.raises(InvalidShareLinkError):
+        await service.resolve_ingredient_token(old_token, recipient.id, now=now)
+    assert await session.get(Ingredient, imported_ingredient_id) is not None
+
+    rotated = await service.rotate_package(created.package.id, owner.id, now=now)
+    assert rotated.token != old_token
+    assert rotated.package.payload == original_payload
+    assert rotated.package.expires_at == now + timedelta(days=30)
+    assert rotated.package.revoked_at is None
+    with pytest.raises(InvalidShareLinkError):
+        await service.resolve_ingredient_token(old_token, recipient.id, now=now)
+    access = await service.resolve_ingredient_token(
+        rotated.token, recipient.id, now=now
+    )
+    assert access.package.id == created.package.id
+    assert access.previous_import is not None
+
+    with pytest.raises(NotFoundError):
+        await service.rotate_package(created.package.id, foreign_owner.id, now=now)
+
+
+async def test_expiry_boundary_and_cleanup_batch_only_delete_stale_packages(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000056, timezone="Europe/Moscow")
+    session.add(owner)
+    await session.flush()
+    source = ingredient_model(owner.id)
+    session.add(source)
+    await session.flush()
+    service = sharing_service(session)
+    now = datetime(2026, 8, 24, 12, tzinfo=UTC)
+
+    stale_expired = await service.create_ingredient_package(owner.id, source.id)
+    stale_expired.package.expires_at = now - timedelta(days=30)
+    recent_expired = await service.create_ingredient_package(owner.id, source.id)
+    recent_expired.package.expires_at = now - timedelta(days=30) + timedelta(seconds=1)
+    stale_revoked = await service.create_ingredient_package(owner.id, source.id)
+    await service.revoke_package(
+        stale_revoked.package.id,
+        owner.id,
+        now=now - timedelta(days=30),
+    )
+    recent_revoked = await service.create_ingredient_package(owner.id, source.id)
+    await service.revoke_package(
+        recent_revoked.package.id,
+        owner.id,
+        now=now - timedelta(days=30) + timedelta(seconds=1),
+    )
+    boundary = await service.create_ingredient_package(owner.id, source.id)
+    boundary.package.expires_at = now
+    await session.flush()
+
+    boundary_item = await service.get_owned_package(
+        boundary.package.id,
+        owner.id,
+        now=now,
+    )
+    assert boundary_item.runtime_status is ShareRuntimeStatus.EXPIRED
+
+    deleted = await ShareCleanupService(ShareRepository(session)).cleanup_batch(
+        retention_days=30,
+        batch_size=2,
+        now=now,
+    )
+    assert deleted == 2
+    assert await session.get(SharePackage, stale_expired.package.id) is None
+    assert await session.get(SharePackage, stale_revoked.package.id) is None
+    assert await session.get(SharePackage, recent_expired.package.id) is not None
+    assert await session.get(SharePackage, recent_revoked.package.id) is not None
+    assert await session.get(SharePackage, boundary.package.id) is not None
 
 
 async def test_batch_snapshot_preflight_import_and_repeat_are_consistent(
@@ -656,6 +969,81 @@ async def test_dish_import_creates_dependency_copy_from_snapshot(
     assert copied.name == "Сыр (копия)"
     assert copied.kcal_per_100g == Decimal("280.00")
     assert imported.dish.nutrition.total.kcal == Decimal("336.0000")
+
+
+async def test_single_dish_acceptance_flow_handles_new_exact_and_copy_independently(
+    session: AsyncSession,
+) -> None:
+    owner = User(telegram_id=9951000311, timezone="Europe/Moscow")
+    recipient = User(telegram_id=9951000312, timezone="Europe/Moscow")
+    session.add_all([owner, recipient])
+    await session.flush()
+    source_rice = ingredient_model(owner.id, name="Рис", kcal="350.00")
+    source_cheese = ingredient_model(owner.id, name="Сыр", kcal="280.00")
+    source_herbs = ingredient_model(owner.id, name="Зелень", kcal="50.00")
+    recipient_rice = ingredient_model(recipient.id, name="Рис", kcal="350.00")
+    recipient_cheese = ingredient_model(recipient.id, name="Сыр", kcal="350.00")
+    session.add_all(
+        [
+            source_rice,
+            source_cheese,
+            source_herbs,
+            recipient_rice,
+            recipient_cheese,
+        ]
+    )
+    await session.flush()
+    source_dish = await dish_model(
+        session,
+        owner.id,
+        "Рис с сыром и зеленью",
+        [
+            (source_rice, "100"),
+            (source_cheese, "120"),
+            (source_herbs, "20"),
+        ],
+    )
+    service = sharing_service(session)
+
+    created = await service.create_dish_package(owner.id, source_dish.id)
+    access = await service.resolve_dish_token(created.token, recipient.id)
+    preflight = await service.preflight_dish(recipient.id, access.payload)
+
+    assert preflight.ingredients.new_count == 1
+    assert preflight.ingredients.exact_count == 1
+    assert preflight.ingredients.conflict_count == 1
+
+    imported = await service.import_dish(
+        created.package.id,
+        recipient.id,
+        {"i2": BatchIngredientAction.COPY_WITH_GENERATED_NAME.value},
+        None,
+    )
+
+    assert imported.dish is not None
+    components = {
+        component.ingredient.name: component for component in imported.dish.components
+    }
+    assert components["Рис"].ingredient.id == recipient_rice.id
+    assert components["Сыр (копия)"].ingredient.kcal_per_100g == Decimal("280.00")
+    assert components["Зелень"].ingredient.user_id == recipient.id
+    assert [component.grams for component in imported.dish.components] == [
+        Decimal("100"),
+        Decimal("120"),
+        Decimal("20"),
+    ]
+    assert imported.dish.nutrition.total.kcal == Decimal("696.0000")
+    assert imported.import_record.created_ingredients_count == 2
+    assert imported.import_record.reused_ingredients_count == 1
+    assert imported.import_record.created_dishes_count == 1
+    assert recipient_cheese.kcal_per_100g == Decimal("350.00")
+
+    source_cheese.kcal_per_100g = Decimal("999.00")
+    source_dish.name = "Изменённый исходный рецепт"
+    await session.flush()
+
+    assert imported.dish.dish.name == "Рис с сыром и зеленью"
+    assert components["Сыр (копия)"].ingredient.kcal_per_100g == Decimal("280.00")
 
 
 async def test_dish_name_conflict_requires_copy_or_safe_skip(
@@ -1028,13 +1416,25 @@ async def test_dish_batch_maximum_item_count_builds_deterministic_preflight(
         [dish.id for dish in dishes],
     )
     access = await service.resolve_dish_token(created.token, recipient.id)
-    preflight = await service.preflight_dish_batch(recipient.id, access.payload)
+    connection = await session.connection()
+    query_count = 0
+
+    def count_query(*_: object) -> None:
+        nonlocal query_count
+        query_count += 1
+
+    event.listen(connection.sync_connection, "before_cursor_execute", count_query)
+    try:
+        preflight = await service.preflight_dish_batch(recipient.id, access.payload)
+    finally:
+        event.remove(connection.sync_connection, "before_cursor_execute", count_query)
 
     assert len(access.payload.dishes) == 20
     assert len(access.payload.ingredients) == 1
     assert len(preflight.dishes) == 20
     assert preflight.ingredients.new_count == 1
     assert preflight.dish_conflict_count == 0
+    assert query_count == 2
 
 
 async def test_dish_batch_import_rolls_back_everything_on_failure(

@@ -7,7 +7,11 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.actions import confirmation_data
-from app.bot.handlers.sharing import compact_nutrition, sharing_service
+from app.bot.handlers.sharing import (
+    SHARE_BEARER_WARNING,
+    compact_nutrition,
+    sharing_service,
+)
 from app.bot.keyboards.actions import ConfirmActionCallback
 from app.bot.keyboards.dishes import DishCallback, build_dishes_menu_keyboard
 from app.bot.keyboards.sharing_dish import (
@@ -56,7 +60,9 @@ def created_dish_share_card(
 {_dish_snapshot_card(payload)}
 
 Ссылка действует до {created.package.expires_at.strftime("%d.%m.%Y")}.
-Получатель импортирует блюдо и необходимые ингредиенты."""
+Получатель импортирует блюдо и необходимые ингредиенты.
+
+⚠️ {SHARE_BEARER_WARNING}"""
 
 
 def dish_import_preview_card(

@@ -30,6 +30,7 @@ from app.sharing.payloads import (
     validate_share_payload_limits,
 )
 from app.sharing.tokens import (
+    SHARE_TOKEN_BYTES,
     TELEGRAM_START_PARAMETER_MAX_LENGTH,
     generate_share_token,
     hash_share_token,
@@ -56,11 +57,13 @@ def test_share_tokens_are_secure_urlsafe_and_hashable() -> None:
     tokens = {generate_share_token() for _ in range(100)}
 
     assert len(tokens) == 100
+    assert SHARE_TOKEN_BYTES * 8 >= 192
     for token in tokens:
         assert is_valid_share_token(token)
         assert len(token) <= TELEGRAM_START_PARAMETER_MAX_LENGTH
         assert len(hash_share_token(token)) == 64
         assert hash_share_token(token) != token
+        assert "user" not in token
 
 
 def test_ingredient_payload_round_trip_preserves_decimal_strings() -> None:
@@ -252,6 +255,54 @@ async def test_sharing_service_rejects_link_creation_without_bot_username() -> N
         )
 
     repository.create_package.assert_not_awaited()
+
+
+async def test_rotation_retries_old_and_colliding_tokens_without_payload_change() -> (
+    None
+):
+    old_token = "sh_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    payload = serialize_share_payload(
+        IngredientSharePayload(ingredients=[ingredient()])
+    )
+    package = SharePackage(
+        id=1,
+        owner_user_id=10,
+        token_hash=hash_share_token(old_token),
+        package_type=SharePackageType.INGREDIENTS,
+        payload_version=1,
+        payload=payload,
+        item_count=1,
+        expires_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    repository = Mock()
+    repository.get_owned_by_id = AsyncMock(return_value=package)
+    repository.rotate_owned = AsyncMock(
+        side_effect=[ShareTokenHashCollisionError(), package]
+    )
+    tokens = iter(
+        [
+            old_token,
+            "sh_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "sh_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+        ]
+    )
+    service = SharingService(
+        repository,
+        bot_username="nutrition_test_bot",
+        link_ttl_days=30,
+        limits=SharePayloadLimits(),
+        token_factory=lambda: next(tokens),
+    )
+    now = datetime(2026, 8, 24, tzinfo=UTC)
+
+    result = await service.rotate_package(1, 10, now=now)
+
+    assert result.token.endswith("C" * 32)
+    assert repository.rotate_owned.await_count == 2
+    assert repository.rotate_owned.await_args.kwargs["expires_at"] == now + timedelta(
+        days=30
+    )
+    assert package.payload == payload
 
 
 async def test_batch_snapshot_preserves_selected_order_and_rechecks_sources() -> None:

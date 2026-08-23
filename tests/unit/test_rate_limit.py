@@ -21,6 +21,10 @@ DEFAULT_MESSAGE_RULE = RateLimitRule(10, 10)
 DEFAULT_CALLBACK_RULE = RateLimitRule(20, 10)
 DEFAULT_SEARCH_RULE = RateLimitRule(5, 10)
 DEFAULT_WEIGHT_CHART_RULE = RateLimitRule(3, 60)
+DEFAULT_SHARE_CREATE_RULE = RateLimitRule(10, 60)
+DEFAULT_SHARE_OPEN_RULE = RateLimitRule(20, 60)
+DEFAULT_SHARE_IMPORT_RULE = RateLimitRule(10, 60)
+DEFAULT_SHARE_ROTATE_RULE = RateLimitRule(5, 60)
 
 
 class FakeClock:
@@ -41,6 +45,10 @@ def make_service(
     callbacks: RateLimitRule = DEFAULT_CALLBACK_RULE,
     search: RateLimitRule = DEFAULT_SEARCH_RULE,
     weight_chart: RateLimitRule = DEFAULT_WEIGHT_CHART_RULE,
+    share_create: RateLimitRule = DEFAULT_SHARE_CREATE_RULE,
+    share_open: RateLimitRule = DEFAULT_SHARE_OPEN_RULE,
+    share_import: RateLimitRule = DEFAULT_SHARE_IMPORT_RULE,
+    share_rotate: RateLimitRule = DEFAULT_SHARE_ROTATE_RULE,
     notice_cooldown: int = 5,
 ) -> RateLimitService:
     return RateLimitService(
@@ -49,6 +57,10 @@ def make_service(
             RateLimitScope.CALLBACKS: callbacks,
             RateLimitScope.SEARCH: search,
             RateLimitScope.WEIGHT_CHART: weight_chart,
+            RateLimitScope.SHARE_CREATE: share_create,
+            RateLimitScope.SHARE_OPEN: share_open,
+            RateLimitScope.SHARE_IMPORT: share_import,
+            RateLimitScope.SHARE_ROTATE: share_rotate,
         },
         notice_cooldown_seconds=notice_cooldown,
         clock=clock,
@@ -56,7 +68,7 @@ def make_service(
 
 
 def make_message_update(update_id: int = 1) -> tuple[Update, Mock]:
-    message = Mock(answer=AsyncMock())
+    message = Mock(answer=AsyncMock(), text=None)
     update = Update.model_construct(
         update_id=update_id,
         message=message,
@@ -228,6 +240,39 @@ def test_custom_weight_chart_render_message_receives_heavy_scope() -> None:
         update,
         {"raw_state": WeightChartStates.wait_date_to.state},
     ) == (RateLimitScope.MESSAGES, RateLimitScope.WEIGHT_CHART)
+
+
+def test_sharing_operations_receive_dedicated_user_scopes() -> None:
+    message_update, _ = make_message_update()
+    message_update.message.text = (  # type: ignore[union-attr]
+        "/start sh_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    )
+    assert resolve_rate_limit_scopes(message_update, {}) == (
+        RateLimitScope.MESSAGES,
+        RateLimitScope.SHARE_OPEN,
+    )
+
+    cases = {
+        "ingredient:share:55:1": RateLimitScope.SHARE_CREATE,
+        "shsel:create": RateLimitScope.SHARE_CREATE,
+        "confirm:share_import:action123": RateLimitScope.SHARE_IMPORT,
+        "confirm:share_rotate_manage:action123": RateLimitScope.SHARE_ROTATE,
+    }
+    for callback_data, expected_scope in cases.items():
+        callback_update, _ = make_callback_update(callback_data)
+        assert resolve_rate_limit_scopes(callback_update, {}) == (
+            RateLimitScope.CALLBACKS,
+            expected_scope,
+        )
+
+
+def test_share_limits_are_per_user_not_per_token() -> None:
+    clock = FakeClock()
+    service = make_service(clock, share_open=RateLimitRule(1, 60))
+
+    assert service.check(1, RateLimitScope.SHARE_OPEN).allowed
+    assert not service.check(1, RateLimitScope.SHARE_OPEN).allowed
+    assert service.check(2, RateLimitScope.SHARE_OPEN).allowed
 
 
 async def test_rate_limit_runs_before_user_database_middleware(monkeypatch) -> None:

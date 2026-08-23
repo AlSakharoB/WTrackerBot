@@ -5,6 +5,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Update
 
+from app.bot.keyboards.actions import ConfirmActionCallback
 from app.bot.states.dishes import DishSearchStates
 from app.bot.states.ingredients import IngredientSearchStates
 from app.bot.states.weights import WeightChartStates
@@ -19,6 +20,17 @@ SEARCH_STATES = {
 }
 WEIGHT_CHART_CALLBACK_PREFIXES = ("weight:chart", "weight_chart:", "wch:")
 WEIGHT_CHART_STATES = {WeightChartStates.wait_date_to.state}
+SHARE_CREATE_CALLBACKS = {"shsel:create", "shdsel:create"}
+SHARE_CREATE_CALLBACK_PREFIXES = ("ingredient:share:", "dish:share:")
+SHARE_IMPORT_ACTIONS = {
+    "share_import",
+    "share_keep",
+    "share_copy",
+    "share_batch",
+    "share_dish",
+    "share_dishes",
+}
+SHARE_ROTATE_ACTION = "share_rotate_manage"
 
 
 class RateLimitMiddleware(BaseMiddleware):
@@ -80,6 +92,11 @@ def resolve_rate_limit_scopes(
 ) -> tuple[RateLimitScope, ...]:
     if update.message is not None:
         scopes = [RateLimitScope.MESSAGES]
+        message_text = (
+            update.message.text if isinstance(update.message.text, str) else ""
+        )
+        if _is_share_start(message_text):
+            scopes.append(RateLimitScope.SHARE_OPEN)
         if data.get("raw_state") in SEARCH_STATES:
             scopes.append(RateLimitScope.SEARCH)
         if data.get("raw_state") in WEIGHT_CHART_STATES:
@@ -92,5 +109,27 @@ def resolve_rate_limit_scopes(
         callback_data = callback.data or ""
         if callback_data.startswith(WEIGHT_CHART_CALLBACK_PREFIXES):
             scopes.append(RateLimitScope.WEIGHT_CHART)
+        if callback_data in SHARE_CREATE_CALLBACKS or callback_data.startswith(
+            SHARE_CREATE_CALLBACK_PREFIXES
+        ):
+            scopes.append(RateLimitScope.SHARE_CREATE)
+        try:
+            confirmation = ConfirmActionCallback.unpack(callback_data)
+        except (TypeError, ValueError):
+            confirmation = None
+        if confirmation is not None:
+            if confirmation.action in SHARE_IMPORT_ACTIONS:
+                scopes.append(RateLimitScope.SHARE_IMPORT)
+            elif confirmation.action == SHARE_ROTATE_ACTION:
+                scopes.append(RateLimitScope.SHARE_ROTATE)
         return tuple(scopes)
     return ()
+
+
+def _is_share_start(text: str) -> bool:
+    fields = text.strip().split(maxsplit=1)
+    return (
+        len(fields) == 2
+        and fields[0].split("@", maxsplit=1)[0] == "/start"
+        and fields[1].startswith("sh_")
+    )

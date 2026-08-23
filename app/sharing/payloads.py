@@ -197,6 +197,18 @@ def share_payload_size(payload: SharePayload) -> int:
     return len(compact_json.encode("utf-8"))
 
 
+def raw_share_payload_size(payload: object) -> int:
+    try:
+        compact_json = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError("Share payload is not JSON serializable") from error
+    return len(compact_json.encode("utf-8"))
+
+
 def validate_share_payload_limits(
     payload: SharePayload,
     limits: SharePayloadLimits,

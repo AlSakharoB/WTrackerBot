@@ -10,6 +10,10 @@ class RateLimitScope(StrEnum):
     CALLBACKS = "callbacks"
     SEARCH = "search"
     WEIGHT_CHART = "weight_chart"
+    SHARE_CREATE = "share_create"
+    SHARE_OPEN = "share_open"
+    SHARE_IMPORT = "share_import"
+    SHARE_ROTATE = "share_rotate"
 
 
 @dataclass(frozen=True, slots=True)

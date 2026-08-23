@@ -9,6 +9,7 @@ from app.db.models.goal import GoalStatus, WeightGoal
 from app.db.models.ingredient import Ingredient
 from app.db.models.nutrition_goal import NutritionGoal
 from app.db.models.reminder import ReminderSetting
+from app.db.models.share import ShareImport, SharePackage
 from app.db.models.user import User
 from app.db.models.weight import WeightEntry
 from app.user_settings import AfterFoodAddAction, NumberFormat
@@ -21,7 +22,7 @@ class PrivacyRepository:
     def atomic(self) -> AbstractAsyncContextManager[AsyncSessionTransaction]:
         return self._session.begin_nested()
 
-    async def counts(self, user_id: int) -> tuple[int, int, int, int, int]:
+    async def counts(self, user_id: int) -> tuple[int, int, int, int, int, int, int]:
         statement = select(
             select(func.count())
             .select_from(Ingredient)
@@ -46,8 +47,16 @@ class PrivacyRepository:
                 WeightGoal.status == GoalStatus.ACTIVE,
             )
             .scalar_subquery(),
+            select(func.count())
+            .select_from(SharePackage)
+            .where(SharePackage.owner_user_id == user_id)
+            .scalar_subquery(),
+            select(func.count())
+            .select_from(ShareImport)
+            .where(ShareImport.recipient_user_id == user_id)
+            .scalar_subquery(),
         )
-        ingredients, dishes, diary, weights, goals = (
+        ingredients, dishes, diary, weights, goals, shares, share_imports = (
             await self._session.execute(statement)
         ).one()
         return (
@@ -56,6 +65,18 @@ class PrivacyRepository:
             int(diary),
             int(weights),
             int(goals),
+            int(shares),
+            int(share_imports),
+        )
+
+    async def delete_share_imports(self, user_id: int) -> None:
+        await self._session.execute(
+            delete(ShareImport).where(ShareImport.recipient_user_id == user_id)
+        )
+
+    async def delete_share_packages(self, user_id: int) -> None:
+        await self._session.execute(
+            delete(SharePackage).where(SharePackage.owner_user_id == user_id)
         )
 
     async def delete_diary_entries(self, user_id: int) -> None:

@@ -45,6 +45,10 @@ from app.sharing.payloads import SharedIngredient, SharePayloadLimits
 from app.utils.decimal import format_decimal
 
 router = Router(name=__name__)
+SHARE_BEARER_WARNING = (
+    "Любой, кто получит ссылку, сможет открыть её, импортировать данные "
+    "и переслать дальше."
+)
 
 
 def sharing_service(
@@ -84,7 +88,9 @@ def created_share_card(
 {shared_ingredient_card(ingredient)}
 
 Ссылка действует до {expires}.
-Получатель сам подтвердит импорт."""
+Получатель сам подтвердит импорт.
+
+⚠️ {SHARE_BEARER_WARNING}"""
 
 
 def import_preview_card(ingredient: SharedIngredient) -> str:

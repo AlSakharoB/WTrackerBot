@@ -22,6 +22,7 @@ DISH_EDITOR_REMOVE = "dish_editor:remove"
 DISH_EDITOR_INGREDIENT_SEARCH = "dish_editor:ingredient_search"
 DISH_EDITOR_CANCEL = "dish_editor:cancel"
 SHARE_DISHES_SELECT = "share:dishes:select"
+SHARE_DISHES_MANAGE = "shm:list:dishes:0:1"
 
 
 class DishesPageCallback(CallbackData, prefix="dishes"):
@@ -65,6 +66,12 @@ def build_dishes_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="📤 Поделиться несколькими",
                     callback_data=SHARE_DISHES_SELECT,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Мои ссылки",
+                    callback_data=SHARE_DISHES_MANAGE,
                 )
             ],
             [

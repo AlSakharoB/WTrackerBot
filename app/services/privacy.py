@@ -12,6 +12,8 @@ class UserDataSummary:
     diary_entries: int
     weight_entries: int
     active_goals: int
+    share_packages: int = 0
+    imported_packages: int = 0
 
 
 class PrivacyService:
@@ -29,6 +31,8 @@ class PrivacyService:
 
     async def clear_user_data(self, user_id: int) -> User:
         async with self._repository.atomic():
+            await self._repository.delete_share_imports(user_id)
+            await self._repository.delete_share_packages(user_id)
             await self._repository.delete_diary_entries(user_id)
             await self._repository.delete_dish_ingredients(user_id)
             await self._repository.delete_dishes(user_id)

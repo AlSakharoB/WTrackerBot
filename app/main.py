@@ -87,6 +87,22 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
                 settings.rate_limit_weight_chart_count,
                 settings.rate_limit_weight_chart_window_seconds,
             ),
+            RateLimitScope.SHARE_CREATE: RateLimitRule(
+                settings.rate_limit_share_create_count,
+                settings.rate_limit_share_create_window_seconds,
+            ),
+            RateLimitScope.SHARE_OPEN: RateLimitRule(
+                settings.rate_limit_share_open_count,
+                settings.rate_limit_share_open_window_seconds,
+            ),
+            RateLimitScope.SHARE_IMPORT: RateLimitRule(
+                settings.rate_limit_share_import_count,
+                settings.rate_limit_share_import_window_seconds,
+            ),
+            RateLimitScope.SHARE_ROTATE: RateLimitRule(
+                settings.rate_limit_share_rotate_count,
+                settings.rate_limit_share_rotate_window_seconds,
+            ),
         },
         notice_cooldown_seconds=settings.rate_limit_notice_cooldown_seconds,
     )
@@ -176,6 +192,7 @@ async def run_bot(settings: Settings) -> None:
             bot,
             dispatcher["database_session_factory"],
             misfire_grace_seconds=settings.reminder_misfire_grace_seconds,
+            share_package_retention_days=settings.share_package_retention_days,
         )
         dispatcher["reminder_scheduler"] = reminder_scheduler
         lifecycle.register_shutdown_callback(

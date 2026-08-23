@@ -184,7 +184,9 @@ def user_data_text(summary: UserDataSummary) -> str:
 Блюд: {summary.dishes}
 Записей питания: {summary.diary_entries}
 Записей веса: {summary.weight_entries}
-Активных целей: {summary.active_goals}"""
+Активных целей: {summary.active_goals}
+Созданных ссылок: {summary.share_packages}
+Импортированных пакетов: {summary.imported_packages}"""
 
 
 DELETE_WARNING_TEXT = """🗑 <b>Удалить все мои данные</b>
@@ -197,6 +199,7 @@ DELETE_WARNING_TEXT = """🗑 <b>Удалить все мои данные</b>
 • дневник питания;
 • вес;
 • цели;
+• созданные ссылки и историю импорта;
 • пользовательские настройки.
 
 Это действие нельзя отменить."""

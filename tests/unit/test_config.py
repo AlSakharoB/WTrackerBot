@@ -32,9 +32,18 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.rate_limit_search_window_seconds == 10
     assert settings.rate_limit_weight_chart_count == 3
     assert settings.rate_limit_weight_chart_window_seconds == 60
+    assert settings.rate_limit_share_create_count == 10
+    assert settings.rate_limit_share_create_window_seconds == 60
+    assert settings.rate_limit_share_open_count == 20
+    assert settings.rate_limit_share_open_window_seconds == 60
+    assert settings.rate_limit_share_import_count == 10
+    assert settings.rate_limit_share_import_window_seconds == 60
+    assert settings.rate_limit_share_rotate_count == 5
+    assert settings.rate_limit_share_rotate_window_seconds == 60
     assert settings.rate_limit_notice_cooldown_seconds == 5
     assert settings.action_lock_ttl_seconds == 20
     assert settings.share_link_ttl_days == 30
+    assert settings.share_package_retention_days == 30
     assert settings.share_max_items == 20
     assert settings.share_max_ingredients == 100
     assert settings.share_max_components == 200
@@ -54,6 +63,7 @@ def test_settings_normalize_log_level() -> None:
         ({"log_level": "verbose"}, "Unsupported LOG_LEVEL"),
         ({"default_timezone": "Mars/Olympus"}, "Unknown DEFAULT_TIMEZONE"),
         ({"share_link_ttl_days": "91"}, "less than or equal to 90"),
+        ({"share_package_retention_days": "0"}, "greater than or equal to 1"),
     ],
 )
 def test_settings_reject_invalid_values(
