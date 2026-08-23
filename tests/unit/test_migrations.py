@@ -155,6 +155,10 @@ def test_compose_orders_db_migrate_bot_and_persists_backups() -> None:
     assert "scripts/healthcheck.py" in deploy
     assert "docker system prune -a -f" in deploy
     assert "rm -f backup migrate" in deploy
+    assert '"$script_dir/sync_env.sh"' in deploy
+    assert deploy.index('"$script_dir/sync_env.sh"') < deploy.index(
+        'docker compose -f "$compose_file" build'
+    )
     assert deploy.index("scripts/healthcheck.py") < deploy.index(
         "docker system prune -a -f"
     )
