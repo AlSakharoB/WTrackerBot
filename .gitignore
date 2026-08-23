@@ -1,4 +1,5 @@
 .env
+.env.backups/
 .idea/
 .pytest_cache/
 .ruff_cache/

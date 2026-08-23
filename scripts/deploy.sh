@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+cd "$project_dir"
+
 compose_file=${COMPOSE_FILE:-docker-compose.yml}
 prune_after_deploy=${DOCKER_PRUNE_AFTER_DEPLOY:-true}
 
@@ -11,6 +15,9 @@ case "$prune_after_deploy" in
         exit 2
         ;;
 esac
+
+echo "Synchronizing .env with .env.example"
+"$script_dir/sync_env.sh"
 
 echo "Building application image"
 docker compose -f "$compose_file" build backup migrate bot
