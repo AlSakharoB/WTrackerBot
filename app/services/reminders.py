@@ -4,7 +4,7 @@ from re import fullmatch
 from zoneinfo import ZoneInfo
 
 from app.db.models.reminder import ReminderSetting, ReminderType
-from app.exceptions import ValidationError
+from app.exceptions import NotFoundError, ValidationError
 from app.repositories.diary import DiaryRepository
 from app.repositories.nutrition_goals import NutritionGoalRepository
 from app.repositories.reminders import ReminderRepository
@@ -95,6 +95,42 @@ class ReminderService:
         reminder_type: ReminderType,
     ) -> ReminderSetting | None:
         return await self._repository.disable(user_id, reminder_type)
+
+    async def update(
+        self,
+        setting_id: int,
+        user_id: int,
+        *,
+        enabled: bool | None = None,
+        time_local: time | None = None,
+        weekdays_mask: int | None = None,
+    ) -> ReminderSetting:
+        current = await self._repository.get_by_id(setting_id, user_id)
+        if current is None:
+            raise NotFoundError("Напоминание не найдено.")
+        if enabled is False:
+            disabled = await self.disable(user_id, current.reminder_type)
+            if disabled is None:
+                raise NotFoundError("Напоминание не найдено.")
+            return disabled
+        configured = await self.configure(
+            user_id=user_id,
+            reminder_type=current.reminder_type,
+            time_local=time_local or current.time_local,
+            weekdays_mask=(
+                weekdays_mask if weekdays_mask is not None else current.weekdays_mask
+            ),
+        )
+        if not current.enabled and enabled is not True:
+            disabled = await self.disable(user_id, current.reminder_type)
+            if disabled is None:
+                raise NotFoundError("Напоминание не найдено.")
+            return disabled
+        return configured
+
+    async def delete(self, setting_id: int, user_id: int) -> None:
+        if not await self._repository.delete(setting_id, user_id):
+            raise NotFoundError("Напоминание не найдено.")
 
     async def prepare_delivery(
         self,

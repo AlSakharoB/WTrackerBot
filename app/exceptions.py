@@ -10,6 +10,10 @@ class DuplicateError(AppError):
     """Entity conflicts with an existing unique value."""
 
 
+class IdempotencyConflictError(DuplicateError):
+    """An idempotency key was reused for a different command payload."""
+
+
 class ValidationError(AppError):
     """Input does not satisfy domain constraints."""
 

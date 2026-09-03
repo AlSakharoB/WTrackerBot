@@ -90,6 +90,17 @@ Telegram-бот для учета питания, КБЖУ, веса и целе
 
 Все этапы дополнений D1-D19 завершены.
 
+Из дополнения Telegram Mini App реализованы этапы M1-M2:
+
+- FastAPI Web API с health/readiness endpoints;
+- серверная проверка подписи и срока действия Telegram `initData`;
+- защищенный `GET /api/v1/me` через общий `UserService`;
+- постоянные idempotency receipts для будущих Web API мутаций;
+- React/TypeScript/Vite frontend и Telegram adapter;
+- адаптивный shell с разделами `Рацион`, `Еда`, `Вес`, `Профиль`;
+- Telegram BackButton, темы, safe area и стабильная высота viewport;
+- серверные переносимые настройки интерфейса и локальный последний раздел.
+
 ## Требования
 
 - Docker Engine с Docker Compose; или
@@ -257,6 +268,35 @@ python -m app.main
 ```
 
 При локальном запуске замените хост `db` в `DATABASE_URL` на `localhost`.
+
+### Mini App M1-M2
+
+Backend запускается отдельно от polling-процесса и использует ту же БД:
+
+```bash
+python -m app.web.main
+```
+
+Проверка незашифрованного локального health endpoint:
+
+```bash
+curl http://127.0.0.1:8080/internal/healthz
+```
+
+Frontend требует Node.js 22+:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Development URL: `http://127.0.0.1:5173`. В development обычный браузер
+показывает интерфейс без пользовательских данных. В production вне Telegram
+отображается экран авторизации. Защищенные `/api/v1/me` и
+`/api/v1/ui-preferences` принимают только свежий подписанный
+`Telegram.WebApp.initData`; production-публикация и кнопка открытия из Telegram
+добавляются на этапе M10.
 
 ## Проверки
 

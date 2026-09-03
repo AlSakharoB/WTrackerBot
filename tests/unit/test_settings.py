@@ -1,11 +1,9 @@
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from aiogram.types import Message
 
 from app.bot.handlers.settings import (
     about_screen,
-    app_version,
     delete_phrase_message,
     diary_behavior_screen,
     diary_behavior_text,
@@ -102,18 +100,22 @@ async def test_all_visible_settings_sections_open() -> None:
     await display_screen(callback, user)
     await diary_behavior_screen(callback, user)
     await privacy_screen(callback, state)
-    await about_screen(callback, "production")
+    await about_screen(callback, "production", "0.2.0")
     await settings_back_main(callback, state)
 
     assert callback.message.edit_text.await_count == 6
     callback.message.answer.assert_awaited_once()
 
 
-def test_about_version_is_safe_public_value() -> None:
-    assert app_version() == "0.1.0"
-    about = SimpleNamespace(version=app_version(), environment="production")
-    assert "postgresql" not in repr(about).lower()
-    assert "token" not in repr(about).lower()
+async def test_about_uses_escaped_runtime_version() -> None:
+    callback = AsyncMock()
+    callback.message = AsyncMock()
+
+    await about_screen(callback, "production", "0.2.0-alpha<b>")
+
+    rendered = callback.message.edit_text.await_args.args[0]
+    assert "Версия: 0.2.0-alpha&lt;b&gt;" in rendered
+    assert "Среда: production" in rendered
 
 
 async def test_wrong_delete_phrase_cancels_without_deleting() -> None:

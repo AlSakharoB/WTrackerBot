@@ -153,6 +153,7 @@ async def test_summary_and_full_delete_keep_user_and_isolate_accounts(
     assert owner_after.timezone == "Europe/Moscow"
     assert owner_after.number_format == NumberFormat.AUTOMATIC.value
     assert owner_after.after_food_add_action == AfterFoodAddAction.OPEN_TODAY.value
+    assert owner_after.confirm_deletions is True
     component_count = await session.scalar(select(func.count(DishIngredient.id)))
     assert component_count == 1
     nutrition_goal_count = await session.scalar(select(func.count(NutritionGoal.id)))

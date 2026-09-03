@@ -49,6 +49,17 @@ class UserSettingsService:
         )
         return self._require_user(user)
 
+    async def set_confirm_deletions(
+        self,
+        user_id: int,
+        enabled: bool,
+    ) -> User:
+        user = await self._repository.update_settings(
+            user_id,
+            confirm_deletions=enabled,
+        )
+        return self._require_user(user)
+
     @staticmethod
     def _require_user(user: User | None) -> User:
         if user is None:

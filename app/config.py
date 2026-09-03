@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -59,6 +59,27 @@ class Settings(BaseSettings):
         ge=1024,
         le=1_048_576,
     )
+    miniapp_enabled: bool = False
+    miniapp_public_url: AnyHttpUrl = AnyHttpUrl("http://localhost:5173")
+    miniapp_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
+    miniapp_port: int = Field(default=8080, ge=1, le=65_535)
+    miniapp_auth_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+    miniapp_auth_clock_skew_seconds: int = Field(default=30, ge=0, le=300)
+    miniapp_max_auth_header_bytes: int = Field(default=8192, ge=512, le=65_536)
+    miniapp_max_request_body_bytes: int = Field(
+        default=65_536,
+        ge=1024,
+        le=10_485_760,
+    )
+    miniapp_cors_origins: Annotated[tuple[str, ...], NoDecode] = (
+        "http://localhost:5173",
+    )
+    web_mutation_receipt_ttl_hours: int = Field(default=24, ge=1, le=168)
+    web_mutation_receipt_cleanup_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86_400,
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -112,11 +133,26 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return parsed
 
+    @field_validator("miniapp_cors_origins", mode="before")
+    @classmethod
+    def parse_miniapp_cors_origins(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        origins = tuple(item.strip().rstrip("/") for item in value.split(","))
+        return tuple(origin for origin in origins if origin)
+
     @model_validator(mode="after")
     def reject_production_backup_bypass(self) -> "Settings":
         if self.app_environment == "production" and self.allow_migration_without_backup:
             msg = "Production migrations require a verified backup"
             raise ValueError(msg)
+        if self.miniapp_enabled and self.app_environment == "production":
+            if self.miniapp_public_url.scheme != "https":
+                msg = "Production MINIAPP_PUBLIC_URL must use HTTPS"
+                raise ValueError(msg)
+            if not self.miniapp_cors_origins:
+                msg = "Production Mini App requires at least one CORS origin"
+                raise ValueError(msg)
         return self
 
 

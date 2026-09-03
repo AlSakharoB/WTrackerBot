@@ -15,7 +15,7 @@ from app.bot.keyboards.reminders import (
 )
 from app.db.models.reminder import ReminderSetting, ReminderType
 from app.db.models.user import User
-from app.exceptions import ValidationError
+from app.exceptions import NotFoundError, ValidationError
 from app.repositories.reminders import ReminderRecord
 from app.services.reminder_scheduler import SHARE_CLEANUP_JOB_ID, ReminderScheduler
 from app.services.reminders import (
@@ -171,6 +171,40 @@ async def test_nutrition_delivery_with_and_without_goal() -> None:
     assert delivery is not None
     assert "Напоминание о дневнике" in delivery.text
     assert "доесть" not in delivery.text.lower()
+
+
+async def test_updating_disabled_reminder_preserves_disabled_state() -> None:
+    current = make_setting(enabled=False)
+    service, _, reminders = make_service(record=None)
+    reminders.get_by_id.return_value = current
+    reminders.upsert.return_value = make_setting(
+        enabled=True,
+        time_local=time(7, 30),
+    )
+    reminders.disable.return_value = make_setting(
+        enabled=False,
+        time_local=time(7, 30),
+    )
+
+    result = await service.update(
+        current.id,
+        current.user_id,
+        time_local=time(7, 30),
+    )
+
+    assert result.enabled is False
+    reminders.disable.assert_awaited_once_with(
+        current.user_id,
+        current.reminder_type,
+    )
+
+
+async def test_updating_foreign_reminder_is_not_found() -> None:
+    service, _, reminders = make_service(record=None)
+    reminders.get_by_id.return_value = None
+
+    with pytest.raises(NotFoundError):
+        await service.update(100, 200, enabled=False)
 
 
 async def test_scheduler_restores_jobs_with_local_timezone(monkeypatch) -> None:

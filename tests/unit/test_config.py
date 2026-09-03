@@ -48,6 +48,17 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.share_max_ingredients == 100
     assert settings.share_max_components == 200
     assert settings.share_max_payload_bytes == 262_144
+    assert settings.miniapp_enabled is False
+    assert str(settings.miniapp_public_url) == "http://localhost:5173/"
+    assert settings.miniapp_host == "127.0.0.1"
+    assert settings.miniapp_port == 8080
+    assert settings.miniapp_auth_max_age_seconds == 300
+    assert settings.miniapp_auth_clock_skew_seconds == 30
+    assert settings.miniapp_max_auth_header_bytes == 8192
+    assert settings.miniapp_max_request_body_bytes == 65_536
+    assert settings.miniapp_cors_origins == ("http://localhost:5173",)
+    assert settings.web_mutation_receipt_ttl_hours == 24
+    assert settings.web_mutation_receipt_cleanup_seconds == 3600
 
 
 def test_settings_normalize_log_level() -> None:
@@ -64,6 +75,7 @@ def test_settings_normalize_log_level() -> None:
         ({"default_timezone": "Mars/Olympus"}, "Unknown DEFAULT_TIMEZONE"),
         ({"share_link_ttl_days": "91"}, "less than or equal to 90"),
         ({"share_package_retention_days": "0"}, "greater than or equal to 1"),
+        ({"miniapp_auth_max_age_seconds": "29"}, "greater than or equal to 30"),
     ],
 )
 def test_settings_reject_invalid_values(
@@ -74,3 +86,27 @@ def test_settings_reject_invalid_values(
 
     with pytest.raises(ValidationError, match=expected_message):
         Settings(**values, _env_file=None)
+
+
+def test_settings_parse_miniapp_cors_origins() -> None:
+    settings = Settings(
+        **VALID_SETTINGS,
+        miniapp_cors_origins="https://app.example.com/, http://localhost:5173",
+        _env_file=None,
+    )
+
+    assert settings.miniapp_cors_origins == (
+        "https://app.example.com",
+        "http://localhost:5173",
+    )
+
+
+def test_settings_require_https_for_enabled_production_miniapp() -> None:
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        Settings(
+            **VALID_SETTINGS,
+            app_environment="production",
+            miniapp_enabled=True,
+            miniapp_public_url="http://app.example.com",
+            _env_file=None,
+        )

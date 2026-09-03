@@ -12,7 +12,7 @@ from app.bot.keyboards.reminders import build_reminder_notification_keyboard
 from app.db.models.reminder import ReminderSetting, ReminderType
 from app.repositories.diary import DiaryRepository
 from app.repositories.nutrition_goals import NutritionGoalRepository
-from app.repositories.reminders import ReminderRepository
+from app.repositories.reminders import ReminderRecord, ReminderRepository
 from app.repositories.shares import ShareRepository
 from app.repositories.weights import WeightRepository
 from app.services.reminders import ReminderService
@@ -21,6 +21,7 @@ from app.services.sharing import ShareCleanupService
 logger = logging.getLogger(__name__)
 
 SCHEDULER_HEARTBEAT_JOB_ID = "system:scheduler-heartbeat"
+REMINDER_SYNC_JOB_ID = "system:reminder-sync"
 SHARE_CLEANUP_JOB_ID = "system:share-cleanup"
 SHARE_CLEANUP_BATCH_SIZE = 100
 
@@ -66,10 +67,16 @@ class ReminderScheduler:
         return min(next_run_times, default=None)
 
     async def start(self) -> None:
-        async with self._session_factory() as session:
-            records = await ReminderRepository(session).list_enabled_records()
-        for record in records:
-            self.schedule(record.setting, record.user.timezone)
+        records = await self.sync_from_database()
+        self._scheduler.add_job(
+            self.sync_from_database,
+            "interval",
+            seconds=30,
+            id=REMINDER_SYNC_JOB_ID,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
         self._scheduler.add_job(
             self._touch_heartbeat,
             "interval",
@@ -95,6 +102,20 @@ class ReminderScheduler:
             len(records),
             extra={"operation": "reminders.scheduler_start"},
         )
+
+    async def sync_from_database(self) -> list[ReminderRecord]:
+        async with self._session_factory() as session:
+            records = await ReminderRepository(session).list_enabled_records()
+        expected_job_ids = {
+            self.job_id(record.setting.user_id, record.setting.reminder_type)
+            for record in records
+        }
+        for job in self._scheduler.get_jobs():
+            if job.id.startswith("reminder:") and job.id not in expected_job_ids:
+                self._scheduler.remove_job(job.id)
+        for record in records:
+            self.schedule(record.setting, record.user.timezone)
+        return records
 
     async def shutdown(self) -> None:
         if self._scheduler.running:

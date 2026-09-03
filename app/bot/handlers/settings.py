@@ -1,6 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
-from importlib.metadata import PackageNotFoundError, version
+from html import escape
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -207,13 +207,6 @@ DELETE_WARNING_TEXT = """🗑 <b>Удалить все мои данные</b>
 DELETE_PHRASE_TEXT = """Для подтверждения отправьте:
 
 <b>УДАЛИТЬ</b>"""
-
-
-def app_version() -> str:
-    try:
-        return version("nutrition-bot")
-    except PackageNotFoundError:
-        return "0.1.0"
 
 
 async def edit_callback(
@@ -552,10 +545,15 @@ async def nutrition_goal_cancel(
 
 
 @router.callback_query(F.data == SETTINGS_ABOUT)
-async def about_screen(callback: CallbackQuery, app_environment: str) -> None:
+async def about_screen(
+    callback: CallbackQuery,
+    app_environment: str,
+    app_version: str,
+) -> None:
     await edit_callback(
         callback,
-        f"ℹ️ <b>О боте</b>\n\nВерсия: {app_version()}\nСреда: {app_environment}",
+        f"ℹ️ <b>О боте</b>\n\nВерсия: {escape(app_version)}\n"
+        f"Среда: {escape(app_environment)}",
         build_about_keyboard(),
     )
 

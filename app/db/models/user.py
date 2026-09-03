@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Identity, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Identity,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -43,6 +51,12 @@ class User(Base):
         nullable=False,
         default=AfterFoodAddAction.OPEN_TODAY,
         server_default=AfterFoodAddAction.OPEN_TODAY.value,
+    )
+    confirm_deletions: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

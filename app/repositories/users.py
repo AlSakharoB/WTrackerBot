@@ -29,14 +29,17 @@ class UserRepository:
         timezone: str | None = None,
         number_format: NumberFormat | None = None,
         after_food_add_action: AfterFoodAddAction | None = None,
+        confirm_deletions: bool | None = None,
     ) -> User | None:
-        values: dict[str, str] = {}
+        values: dict[str, object] = {}
         if timezone is not None:
             values["timezone"] = timezone
         if number_format is not None:
             values["number_format"] = number_format.value
         if after_food_add_action is not None:
             values["after_food_add_action"] = after_food_add_action.value
+        if confirm_deletions is not None:
+            values["confirm_deletions"] = confirm_deletions
         if not values:
             return await self.get_by_id(user_id)
         statement = (

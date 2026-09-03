@@ -31,6 +31,18 @@ class ReminderRepository:
             )
         )
 
+    async def get_by_id(
+        self,
+        setting_id: int,
+        user_id: int,
+    ) -> ReminderSetting | None:
+        return await self._session.scalar(
+            select(ReminderSetting).where(
+                ReminderSetting.id == setting_id,
+                ReminderSetting.user_id == user_id,
+            )
+        )
+
     async def list_for_user(self, user_id: int) -> list[ReminderSetting]:
         statement = (
             select(ReminderSetting)
@@ -119,6 +131,17 @@ class ReminderRepository:
             .where(ReminderSetting.id == setting_id)
             .values(enabled=False)
         )
+
+    async def delete(self, setting_id: int, user_id: int) -> bool:
+        statement = (
+            delete(ReminderSetting)
+            .where(
+                ReminderSetting.id == setting_id,
+                ReminderSetting.user_id == user_id,
+            )
+            .returning(ReminderSetting.id)
+        )
+        return await self._session.scalar(statement) is not None
 
     async def delete_for_user(self, user_id: int) -> None:
         await self._session.execute(
