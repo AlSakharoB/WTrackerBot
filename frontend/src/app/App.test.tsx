@@ -82,6 +82,14 @@ describe("Mini App routes", () => {
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
   });
 
+  it("opens food folder management without leaving the catalog", () => {
+    renderApp("/food");
+    fireEvent.click(screen.getByRole("button", { name: "Управлять папками" }));
+    expect(screen.getByRole("dialog", { name: "Папки еды" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Новая папка")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Создать папку" })).toBeDisabled();
+  });
+
   it("opens the ration source picker as a nested route", () => {
     const telegram = createPreviewAdapter();
     renderApp("/ration/add?date=2026-09-10&meal=breakfast", telegram);

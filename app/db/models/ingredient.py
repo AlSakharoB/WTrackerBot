@@ -25,6 +25,11 @@ class Ingredient(Base):
             "name_normalized",
             name="uq_ingredients_user_id_name_normalized",
         ),
+        UniqueConstraint(
+            "user_id",
+            "id",
+            name="uq_ingredients_user_id_id",
+        ),
         Index(
             "ix_ingredients_name_normalized_trgm",
             "name_normalized",

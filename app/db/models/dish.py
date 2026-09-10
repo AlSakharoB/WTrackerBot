@@ -25,6 +25,11 @@ class Dish(Base):
             "name_normalized",
             name="uq_dishes_user_id_name_normalized",
         ),
+        UniqueConstraint(
+            "user_id",
+            "id",
+            name="uq_dishes_user_id_id",
+        ),
         Index(
             "ix_dishes_name_normalized_trgm",
             "name_normalized",

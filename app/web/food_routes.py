@@ -11,10 +11,12 @@ from fastapi.responses import JSONResponse, Response
 
 from app.db.models.ingredient import Ingredient
 from app.repositories.dishes import DishRecord, DishRepository
+from app.repositories.food_folders import FoodFolderRepository
 from app.repositories.ingredients import IngredientRepository
 from app.repositories.web_mutations import WebMutationReceiptRepository
 from app.search import normalize_search_text
 from app.services.dishes import DishComponentData, DishDetails, DishService
+from app.services.food_folders import FoodFolderService
 from app.services.ingredients import (
     CreateIngredientData,
     IngredientField,
@@ -54,10 +56,13 @@ def _nutrition_response(values: NutritionValues) -> FoodNutritionResponse:
     )
 
 
-def _ingredient_response(ingredient: Ingredient) -> IngredientResponse:
+def _ingredient_response(
+    ingredient: Ingredient, folder_id: int | None = None
+) -> IngredientResponse:
     return IngredientResponse(
         id=str(ingredient.id),
         name=ingredient.name,
+        folder_id=str(folder_id) if folder_id is not None else None,
         nutrition_per_100g=_nutrition_response(
             NutritionValues(
                 kcal=ingredient.kcal_per_100g,
@@ -79,10 +84,11 @@ def _ingredient_response(ingredient: Ingredient) -> IngredientResponse:
     )
 
 
-def _dish_response(details: DishDetails) -> DishResponse:
+def _dish_response(details: DishDetails, folder_id: int | None = None) -> DishResponse:
     return DishResponse(
         id=str(details.dish.id),
         name=details.dish.name,
+        folder_id=str(folder_id) if folder_id is not None else None,
         total_weight_g=str(details.nutrition.total_weight),
         nutrition_total=_nutrition_response(details.nutrition.total),
         nutrition_per_100g=_nutrition_response(details.nutrition.per_100g),
@@ -171,6 +177,20 @@ async def _raise_ingredient_duplicate(
         )
 
 
+async def _folder_filter(
+    repository: FoodFolderRepository, user_id: int, value: str | None
+) -> tuple[int | None, bool]:
+    if value is None:
+        return None, False
+    if value == "unfiled":
+        return None, True
+    if not value.isdigit() or value.startswith("0"):
+        raise WebAPIError("folder_not_found", "Папка не найдена.", status_code=404)
+    if await repository.get(user_id, int(value)) is None:
+        raise WebAPIError("folder_not_found", "Папка не найдена.", status_code=404)
+    return int(value), False
+
+
 @router.get("/ingredients", response_model=IngredientListResponse)
 async def list_ingredients(
     user: CurrentUser,
@@ -180,8 +200,10 @@ async def list_ingredients(
     sort: FoodSort = "name_asc",
     cursor: str | None = Query(default=None, max_length=1024),
 ) -> IngredientListResponse:
-    if folder_id not in {None, "unfiled"}:
-        raise WebAPIError("folder_not_found", "Папка не найдена.", status_code=404)
+    folder_repository = FoodFolderRepository(session)
+    selected_folder_id, unfiled = await _folder_filter(
+        folder_repository, user.id, folder_id
+    )
     data = _cursor_data(cursor, sort)
     items = await IngredientRepository(session).search_cursor(
         user.id,
@@ -191,11 +213,18 @@ async def list_ingredients(
         cursor_created_at=data.get("created_at"),
         cursor_id=data.get("id"),
         limit=PAGE_SIZE + 1,
+        folder_id=selected_folder_id,
+        unfiled=unfiled,
     )
     has_more = len(items) > PAGE_SIZE
     visible = items[:PAGE_SIZE]
+    assignments = await folder_repository.ingredient_folder_ids(
+        user.id, [item.id for item in visible]
+    )
     return IngredientListResponse(
-        items=[_ingredient_response(item) for item in visible],
+        items=[
+            _ingredient_response(item, assignments.get(item.id)) for item in visible
+        ],
         next_cursor=_next_cursor(visible[-1], sort) if has_more else None,
     )
 
@@ -209,11 +238,24 @@ async def create_ingredient(
     idempotency_key: IdempotencyKey,
 ) -> Response:
     service = IngredientService(IngredientRepository(session))
+    folder_service = FoodFolderService(FoodFolderRepository(session))
 
     async def command() -> tuple[int, dict[str, object]]:
+        if payload.folder_id is not None:
+            await folder_service.get(user.id, int(payload.folder_id))
         await _raise_ingredient_duplicate(service, user.id, payload.name)
         ingredient = await service.create(user.id, _create_data(payload))
-        return 201, _ingredient_response(ingredient).model_dump(mode="json")
+        if payload.folder_id is not None:
+            await folder_service.move(
+                user.id,
+                item_type="ingredient",
+                item_ids=[ingredient.id],
+                folder_id=int(payload.folder_id),
+            )
+        return 201, _ingredient_response(
+            ingredient,
+            int(payload.folder_id) if payload.folder_id else None,
+        ).model_dump(mode="json")
 
     result = await _mutation_service(request, session).execute(
         user_id=user.id,
@@ -236,7 +278,10 @@ async def get_ingredient(
     ingredient = await IngredientService(IngredientRepository(session)).get(
         user.id, ingredient_id
     )
-    return _ingredient_response(ingredient)
+    assignments = await FoodFolderRepository(session).ingredient_folder_ids(
+        user.id, [ingredient.id]
+    )
+    return _ingredient_response(ingredient, assignments.get(ingredient.id))
 
 
 @router.patch("/ingredients/{ingredient_id}", response_model=IngredientResponse)
@@ -247,7 +292,7 @@ async def update_ingredient(
     session: DatabaseSession,
 ) -> IngredientResponse:
     service = IngredientService(IngredientRepository(session))
-    await service.get(user.id, ingredient_id)
+    ingredient = await service.get(user.id, ingredient_id)
     if payload.name is not None:
         await _raise_ingredient_duplicate(
             service, user.id, payload.name, exclude_id=ingredient_id
@@ -259,7 +304,6 @@ async def update_ingredient(
         ("fat_g_per_100g", IngredientField.FAT),
         ("carbs_g_per_100g", IngredientField.CARBS),
     )
-    ingredient = None
     for request_field, domain_field in fields:
         value = getattr(payload, request_field)
         if value is not None:
@@ -285,8 +329,19 @@ async def update_ingredient(
         ingredient = await IngredientRepository(session).update(
             ingredient_id, user.id, metadata_fields
         )
+    folder_repository = FoodFolderRepository(session)
+    if "folder_id" in payload.model_fields_set:
+        await FoodFolderService(folder_repository).move(
+            user.id,
+            item_type="ingredient",
+            item_ids=[ingredient_id],
+            folder_id=int(payload.folder_id) if payload.folder_id else None,
+        )
     assert ingredient is not None
-    return _ingredient_response(ingredient)
+    assignments = await folder_repository.ingredient_folder_ids(
+        user.id, [ingredient_id]
+    )
+    return _ingredient_response(ingredient, assignments.get(ingredient_id))
 
 
 @router.get(
@@ -361,8 +416,10 @@ async def list_dishes(
     sort: FoodSort = "name_asc",
     cursor: str | None = Query(default=None, max_length=1024),
 ) -> DishListResponse:
-    if folder_id not in {None, "unfiled"}:
-        raise WebAPIError("folder_not_found", "Папка не найдена.", status_code=404)
+    folder_repository = FoodFolderRepository(session)
+    selected_folder_id, unfiled = await _folder_filter(
+        folder_repository, user.id, folder_id
+    )
     data = _cursor_data(cursor, sort)
     records = await DishRepository(session).search_records_cursor(
         user.id,
@@ -372,11 +429,21 @@ async def list_dishes(
         cursor_created_at=data.get("created_at"),
         cursor_id=data.get("id"),
         limit=PAGE_SIZE + 1,
+        folder_id=selected_folder_id,
+        unfiled=unfiled,
     )
     visible = records[:PAGE_SIZE]
     service = DishService(DishRepository(session))
+    assignments = await folder_repository.dish_folder_ids(
+        user.id, [item.dish.id for item in visible]
+    )
     return DishListResponse(
-        items=[_dish_response(service._details_from_record(item)) for item in visible],
+        items=[
+            _dish_response(
+                service._details_from_record(item), assignments.get(item.dish.id)
+            )
+            for item in visible
+        ],
         next_cursor=_next_cursor(visible[-1], sort)
         if len(records) > PAGE_SIZE
         else None,
@@ -392,11 +459,23 @@ async def create_dish(
     idempotency_key: IdempotencyKey,
 ) -> Response:
     service = DishService(DishRepository(session))
+    folder_service = FoodFolderService(FoodFolderRepository(session))
 
     async def command() -> tuple[int, dict[str, object]]:
+        if payload.folder_id is not None:
+            await folder_service.get(user.id, int(payload.folder_id))
         await _raise_dish_duplicate(service, user.id, payload.name)
         details = await service.create(user.id, payload.name, _component_data(payload))
-        return 201, _dish_response(details).model_dump(mode="json")
+        if payload.folder_id is not None:
+            await folder_service.move(
+                user.id,
+                item_type="dish",
+                item_ids=[details.dish.id],
+                folder_id=int(payload.folder_id),
+            )
+        return 201, _dish_response(
+            details, int(payload.folder_id) if payload.folder_id else None
+        ).model_dump(mode="json")
 
     result = await _mutation_service(request, session).execute(
         user_id=user.id,
@@ -416,9 +495,11 @@ async def create_dish(
 async def get_dish(
     dish_id: int, user: CurrentUser, session: DatabaseSession
 ) -> DishResponse:
-    return _dish_response(
-        await DishService(DishRepository(session)).get(user.id, dish_id)
+    details = await DishService(DishRepository(session)).get(user.id, dish_id)
+    assignments = await FoodFolderRepository(session).dish_folder_ids(
+        user.id, [dish_id]
     )
+    return _dish_response(details, assignments.get(dish_id))
 
 
 @router.patch("/dishes/{dish_id}", response_model=DishResponse)
@@ -431,9 +512,19 @@ async def update_dish(
     service = DishService(DishRepository(session))
     await service.get(user.id, dish_id)
     await _raise_dish_duplicate(service, user.id, payload.name, exclude_id=dish_id)
-    return _dish_response(
-        await service.replace(user.id, dish_id, payload.name, _component_data(payload))
+    details = await service.replace(
+        user.id, dish_id, payload.name, _component_data(payload)
     )
+    folder_repository = FoodFolderRepository(session)
+    if "folder_id" in payload.model_fields_set:
+        await FoodFolderService(folder_repository).move(
+            user.id,
+            item_type="dish",
+            item_ids=[dish_id],
+            folder_id=int(payload.folder_id) if payload.folder_id else None,
+        )
+    assignments = await folder_repository.dish_folder_ids(user.id, [dish_id])
+    return _dish_response(details, assignments.get(dish_id))
 
 
 @router.get(

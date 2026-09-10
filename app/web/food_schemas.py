@@ -41,6 +41,7 @@ class IngredientCreateRequest(BaseModel):
     photo_url: AnyHttpUrl | None = None
     source_name: str | None = Field(default=None, max_length=100)
     source_url: AnyHttpUrl | None = None
+    folder_id: str | None = Field(default=None, pattern=r"^[1-9]\d*$", max_length=20)
 
     @field_serializer("photo_url", "source_url")
     def serialize_url(self, value: AnyHttpUrl | None) -> str | None:
@@ -57,6 +58,7 @@ class IngredientUpdateRequest(BaseModel):
     photo_url: AnyHttpUrl | None = None
     source_name: str | None = Field(default=None, max_length=100)
     source_url: AnyHttpUrl | None = None
+    folder_id: str | None = Field(default=None, pattern=r"^[1-9]\d*$", max_length=20)
 
     @model_validator(mode="after")
     def require_change(self) -> "IngredientUpdateRequest":
@@ -95,6 +97,7 @@ class DishListResponse(BaseModel):
 class DishCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     components: list[DishComponentRequest] = Field(min_length=1, max_length=100)
+    folder_id: str | None = Field(default=None, pattern=r"^[1-9]\d*$", max_length=20)
 
 
 class DishUpdateRequest(DishCreateRequest):

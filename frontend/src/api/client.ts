@@ -269,6 +269,7 @@ export interface IngredientInput {
   photo_url?: string | null;
   source_name?: string | null;
   source_url?: string | null;
+  folder_id?: string | null;
 }
 
 export interface DishComponent {
@@ -291,6 +292,18 @@ export interface Dish {
 export interface DishInput {
   name: string;
   components: Array<{ ingredient_id: string; grams: string }>;
+  folder_id?: string | null;
+}
+
+export interface FoodFolder {
+  id: string;
+  name: string;
+  sort_order: number;
+  item_count: number;
+  ingredient_count: number;
+  dish_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FoodPageResult<T> {
@@ -838,6 +851,81 @@ export async function deleteFood(
     headers: authorizationHeaders(initData),
   });
   if (!response.ok) await parseResponse(response, "Не удалось удалить запись");
+}
+
+export async function fetchFoodFolders(initData: string): Promise<FoodFolder[]> {
+  const response = await fetch("/api/v1/food-folders", {
+    headers: authorizationHeaders(initData),
+  });
+  const result = await parseResponse<{ items: FoodFolder[] }>(
+    response,
+    "Не удалось загрузить папки",
+  );
+  return result.items;
+}
+
+export async function createFoodFolder(
+  initData: string,
+  name: string,
+  idempotencyKey: string,
+): Promise<FoodFolder> {
+  const response = await fetch("/api/v1/food-folders", {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify({ name }),
+  });
+  return parseResponse(response, "Не удалось создать папку");
+}
+
+export async function renameFoodFolder(
+  initData: string,
+  id: string,
+  name: string,
+): Promise<FoodFolder> {
+  const response = await fetch(`/api/v1/food-folders/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify({ name }),
+  });
+  return parseResponse(response, "Не удалось переименовать папку");
+}
+
+export async function deleteFoodFolder(initData: string, id: string): Promise<void> {
+  const response = await fetch(`/api/v1/food-folders/${id}`, {
+    method: "DELETE",
+    headers: authorizationHeaders(initData),
+  });
+  if (!response.ok) await parseResponse(response, "Не удалось удалить папку");
+}
+
+export async function reorderFoodFolders(
+  initData: string,
+  folderIds: string[],
+): Promise<FoodFolder[]> {
+  const response = await fetch("/api/v1/food-folders/reorder", {
+    method: "POST",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify({ folder_ids: folderIds }),
+  });
+  const result = await parseResponse<{ items: FoodFolder[] }>(
+    response,
+    "Не удалось изменить порядок папок",
+  );
+  return result.items;
+}
+
+export async function moveFoodItems(
+  initData: string,
+  type: "ingredient" | "dish",
+  itemIds: string[],
+  folderId: string | null,
+): Promise<void> {
+  const response = await fetch("/api/v1/food-items/folder-batch", {
+    method: "POST",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify({ type, item_ids: itemIds, folder_id: folderId }),
+  });
+  await parseResponse(response, "Не удалось переместить позиции");
 }
 
 export async function createSharingPackage(

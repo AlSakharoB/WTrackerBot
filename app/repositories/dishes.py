@@ -4,12 +4,23 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import String, column, delete, func, select, true, update, values
+from sqlalchemy import (
+    String,
+    column,
+    delete,
+    exists,
+    func,
+    select,
+    true,
+    update,
+    values,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.dish import Dish, DishIngredient
+from app.db.models.food_folder import FoodFolderItem
 from app.db.models.ingredient import Ingredient
 from app.exceptions import DuplicateError
 from app.search import DUPLICATE_NAME_CANDIDATE_LIMIT
@@ -313,8 +324,24 @@ class DishRepository:
         cursor_created_at: datetime | None,
         cursor_id: int | None,
         limit: int,
+        folder_id: int | None = None,
+        unfiled: bool = False,
     ) -> list[DishRecord]:
         statement = select(Dish).where(Dish.user_id == user_id)
+        assignment = (
+            select(FoodFolderItem.id)
+            .where(
+                FoodFolderItem.user_id == user_id,
+                FoodFolderItem.dish_id == Dish.id,
+            )
+            .correlate(Dish)
+        )
+        if folder_id is not None:
+            statement = statement.where(
+                exists(assignment.where(FoodFolderItem.folder_id == folder_id))
+            )
+        elif unfiled:
+            statement = statement.where(~exists(assignment))
         if query:
             statement = statement.where(
                 Dish.name_normalized.contains(query, autoescape=True)

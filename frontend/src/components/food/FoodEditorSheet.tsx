@@ -14,6 +14,7 @@ import {
   type Dish,
   type DishInput,
   type FoodKind,
+  type FoodFolder,
   type FoodNutrition,
   type Ingredient,
   type IngredientInput,
@@ -30,6 +31,7 @@ const EMPTY_INGREDIENT: IngredientInput = {
   photo_url: "",
   source_name: "",
   source_url: "",
+  folder_id: null,
 };
 
 type EditableFood = Ingredient | Dish;
@@ -55,6 +57,7 @@ function ingredientInput(item: EditableFood | null): IngredientInput {
     photo_url: item.photo_url ?? "",
     source_name: item.source_name ?? "",
     source_url: item.source_url ?? "",
+    folder_id: item.folder_id,
   };
 }
 
@@ -97,6 +100,7 @@ interface FoodEditorSheetProps {
   item: EditableFood | null;
   initData: string;
   authorized: boolean;
+  folders: FoodFolder[];
   onClose: () => void;
   onOpenExisting: (item: EditableFood) => void;
 }
@@ -107,6 +111,7 @@ export function FoodEditorSheet({
   item,
   initData,
   authorized,
+  folders,
   onClose,
   onOpenExisting,
 }: FoodEditorSheetProps) {
@@ -114,6 +119,7 @@ export function FoodEditorSheet({
   const { showToast } = useToast();
   const [ingredient, setIngredient] = useState(() => ingredientInput(item));
   const [dishName, setDishName] = useState(isDish(item) ? item.name : "");
+  const [dishFolderId, setDishFolderId] = useState(isDish(item) ? item.folder_id ?? "" : "");
   const [components, setComponents] = useState<EditableComponent[]>(
     isDish(item) ? item.components : [],
   );
@@ -169,6 +175,7 @@ export function FoodEditorSheet({
   });
   const dishInput: DishInput = {
     name: dishName,
+    folder_id: dishFolderId || null,
     components: components.map((component) => ({
       ingredient_id: component.ingredient.id,
       grams: component.grams,
@@ -228,6 +235,9 @@ export function FoodEditorSheet({
             <FormField label="Название" htmlFor="ingredient-name">
               <input id="ingredient-name" value={ingredient.name} onChange={(event) => setIngredient({ ...ingredient, name: event.target.value })} autoFocus />
             </FormField>
+            <FormField label="Папка" htmlFor="ingredient-folder">
+              <select id="ingredient-folder" value={ingredient.folder_id ?? ""} onChange={(event) => setIngredient({ ...ingredient, folder_id: event.target.value || null })}><option value="">Без папки</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
+            </FormField>
             <fieldset className="nutrition-fields">
               <legend>КБЖУ на 100 г</legend>
               <FormField label="Ккал" htmlFor="ingredient-kcal"><input id="ingredient-kcal" inputMode="decimal" value={ingredient.energy_kcal_per_100g} onChange={(event) => setIngredient({ ...ingredient, energy_kcal_per_100g: event.target.value })} /></FormField>
@@ -256,6 +266,7 @@ export function FoodEditorSheet({
         ) : (
           <form className="food-editor" onSubmit={(event) => { event.preventDefault(); saveDish.mutate(); }}>
             <FormField label="Название" htmlFor="dish-name"><input id="dish-name" value={dishName} onChange={(event) => setDishName(event.target.value)} autoFocus /></FormField>
+            <FormField label="Папка" htmlFor="dish-folder"><select id="dish-folder" value={dishFolderId} onChange={(event) => setDishFolderId(event.target.value)}><option value="">Без папки</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></FormField>
             <div className="dish-components">
               <div className="dish-components__heading"><strong>Состав</strong><span>{components.length}</span></div>
               {components.map((component, index) => (

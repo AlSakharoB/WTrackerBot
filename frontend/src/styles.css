@@ -469,11 +469,12 @@ h1, h2, h3 { letter-spacing: 0; }
 .food-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 8px; }
 .food-search-row .search-field { margin: 0; }
 .icon-button--primary { color: var(--app-primary-text); border-color: var(--app-primary); background: var(--app-primary); }
-.food-filter-row { display: flex; gap: 8px; justify-content: space-between; }
+.food-filter-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .food-filter-row label { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--app-muted); }
 .food-filter-row label:first-child { flex: 1; }
 .food-filter-row svg { flex: 0 0 17px; width: 17px; height: 17px; }
 .food-filter-row select { min-width: 0; max-width: 100%; min-height: 38px; padding: 0 28px 0 9px; border: 1px solid var(--app-border); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 13px; }
+.food-filter-row .icon-button { width: 38px; height: 38px; flex: 0 0 38px; }
 .selection-bar { position: sticky; z-index: 12; top: calc(63px + max(var(--app-safe-top), var(--app-content-safe-top))); display: flex; align-items: center; gap: 8px; margin: 0 -4px; padding: 9px 4px; border-bottom: 1px solid var(--app-border); background: color-mix(in srgb, var(--app-bg) 95%, transparent); backdrop-filter: blur(10px); }
 .selection-bar strong { margin-right: auto; font-size: 13px; }
 .selection-bar button { min-height: 36px; padding: 0 10px; font-size: 12px; }
@@ -490,6 +491,24 @@ h1, h2, h3 { letter-spacing: 0; }
 .food-row__content strong { width: 100%; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .food-row__content span { color: var(--app-muted); font-size: 11px; line-height: 1.35; }
 .food-row__content small { color: var(--app-link); font-size: 10px; }
+.food-folder-action { width: 34px; height: 38px; display: grid; place-items: center; padding: 0; border: 0; color: var(--app-muted); background: transparent; cursor: pointer; }
+.food-folder-action svg { width: 19px; }
+.folder-create { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; margin-bottom: 18px; }
+.folder-create input { min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--app-border); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 16px; }
+.folder-manager-list { display: grid; border-top: 1px solid var(--app-border); }
+.folder-manager-row { min-width: 0; min-height: 58px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--app-border); }
+.folder-manager-row__name { min-width: 0; display: flex; flex-direction: column; }
+.folder-manager-row__name strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.folder-manager-row__name small { margin-top: 2px; color: var(--app-muted); font-size: 11px; }
+.folder-manager-row__actions { display: flex; }
+.folder-manager-row__actions button, .folder-manager-row form button { width: 36px; height: 40px; display: grid; place-items: center; padding: 0; border: 0; color: var(--app-muted); background: transparent; cursor: pointer; }
+.folder-manager-row__actions button:disabled { cursor: default; opacity: .35; }
+.folder-manager-row__actions button.is-danger { color: var(--app-danger); }
+.folder-manager-row__actions svg, .folder-manager-row form svg { width: 17px; }
+.folder-manager-row form { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px; align-items: center; }
+.folder-manager-row form input { min-width: 0; height: 40px; padding: 0 9px; border: 1px solid var(--app-primary); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 16px; }
+.folder-empty { margin: 0; padding: 22px 4px; color: var(--app-muted); font-size: 13px; line-height: 1.45; }
+.folder-picker-list .action-row { grid-template-columns: minmax(0, 1fr); }
 .load-more { align-self: center; margin: 16px 0 8px; }
 .food-editor { display: grid; gap: 15px; }
 .nutrition-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 13px; border: 1px solid var(--app-border); border-radius: 7px; }

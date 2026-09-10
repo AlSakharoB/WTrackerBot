@@ -9,6 +9,7 @@ from app.db.session import check_database_connection
 from app.repositories.ui_preferences import UIPreferenceRepository
 from app.services.ui_preferences import UIPreferenceService
 from app.web.dependencies import CurrentUser, DatabaseSession
+from app.web.folder_routes import router as folder_router
 from app.web.food_routes import router as food_router
 from app.web.profile_routes import router as profile_router
 from app.web.ration_routes import router as ration_router
@@ -28,6 +29,7 @@ router.include_router(profile_router)
 router.include_router(ration_router)
 router.include_router(weight_router)
 router.include_router(food_router)
+router.include_router(folder_router)
 router.include_router(sharing_router)
 
 

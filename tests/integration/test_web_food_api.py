@@ -213,3 +213,172 @@ async def test_food_api_crud_pagination_dependencies_sharing_and_isolation(
             headers=recipient_headers,
         )
         assert unavailable.status_code == 422
+
+
+async def test_food_folder_api_organizes_catalog_without_deleting_food(
+    session: AsyncSession,
+) -> None:
+    settings = Settings(
+        bot_token=BOT_TOKEN,
+        database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        _env_file=None,
+    )
+    app = create_web_app(settings)
+
+    async def override_session() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    app.dependency_overrides[get_database_session] = override_session
+    now = datetime.now(UTC)
+    owner_headers = auth_headers(now, telegram_id=111222333)
+    other_headers = auth_headers(now, telegram_id=444555666)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        await client.get("/api/v1/me", headers=owner_headers)
+        await client.get("/api/v1/me", headers=other_headers)
+        ingredient = (
+            await client.post(
+                "/api/v1/ingredients",
+                headers={**owner_headers, "Idempotency-Key": "folder-owner-food"},
+                json=ingredient_payload("M8 owner ingredient"),
+            )
+        ).json()
+        foreign_ingredient = (
+            await client.post(
+                "/api/v1/ingredients",
+                headers={**other_headers, "Idempotency-Key": "folder-foreign-food"},
+                json=ingredient_payload("M8 foreign ingredient"),
+            )
+        ).json()
+        dish = (
+            await client.post(
+                "/api/v1/dishes",
+                headers={**owner_headers, "Idempotency-Key": "folder-owner-dish"},
+                json={
+                    "name": "M8 owner dish",
+                    "components": [{"ingredient_id": ingredient["id"], "grams": "100"}],
+                },
+            )
+        ).json()
+
+        first = await client.post(
+            "/api/v1/food-folders",
+            headers={**owner_headers, "Idempotency-Key": "folder-milk"},
+            json={"name": "Ｍｉｌｋ"},
+        )
+        second = await client.post(
+            "/api/v1/food-folders",
+            headers={**owner_headers, "Idempotency-Key": "folder-fruit"},
+            json={"name": "Fruit"},
+        )
+        assert first.status_code == 201
+        assert second.status_code == 201
+        milk = first.json()
+        fruit = second.json()
+        assert [milk["sort_order"], fruit["sort_order"]] == [0, 1]
+
+        duplicate = await client.post(
+            "/api/v1/food-folders",
+            headers={**owner_headers, "Idempotency-Key": "folder-duplicate"},
+            json={"name": " milk! "},
+        )
+        assert duplicate.status_code == 409
+        same_name_other_user = await client.post(
+            "/api/v1/food-folders",
+            headers={**other_headers, "Idempotency-Key": "folder-other-milk"},
+            json={"name": "milk"},
+        )
+        assert same_name_other_user.status_code == 201
+
+        atomic_failure = await client.post(
+            "/api/v1/food-items/folder-batch",
+            headers=owner_headers,
+            json={
+                "type": "ingredient",
+                "item_ids": [ingredient["id"], foreign_ingredient["id"]],
+                "folder_id": milk["id"],
+            },
+        )
+        assert atomic_failure.status_code == 404
+        unchanged = await client.get(
+            f"/api/v1/ingredients/{ingredient['id']}", headers=owner_headers
+        )
+        assert unchanged.json()["folder_id"] is None
+
+        moved_ingredient = await client.put(
+            f"/api/v1/food-items/ingredient/{ingredient['id']}/folder",
+            headers=owner_headers,
+            json={"folder_id": milk["id"]},
+        )
+        assert moved_ingredient.status_code == 200
+        moved_dish = await client.put(
+            f"/api/v1/food-items/dish/{dish['id']}/folder",
+            headers=owner_headers,
+            json={"folder_id": milk["id"]},
+        )
+        assert moved_dish.status_code == 200
+
+        folder_list = await client.get("/api/v1/food-folders", headers=owner_headers)
+        assert folder_list.json()["items"][0]["item_count"] == 2
+        filtered = await client.get(
+            "/api/v1/ingredients",
+            headers=owner_headers,
+            params={"folder_id": milk["id"]},
+        )
+        assert [item["id"] for item in filtered.json()["items"]] == [ingredient["id"]]
+        assert filtered.json()["items"][0]["folder_id"] == milk["id"]
+
+        for target in (fruit["id"], milk["id"]):
+            response = await client.put(
+                f"/api/v1/food-items/ingredient/{ingredient['id']}/folder",
+                headers=owner_headers,
+                json={"folder_id": target},
+            )
+            assert response.status_code == 200
+        assert (
+            await client.get(
+                f"/api/v1/ingredients/{ingredient['id']}", headers=owner_headers
+            )
+        ).json()["folder_id"] == milk["id"]
+
+        reordered = await client.post(
+            "/api/v1/food-folders/reorder",
+            headers=owner_headers,
+            json={"folder_ids": [fruit["id"], milk["id"]]},
+        )
+        assert [item["id"] for item in reordered.json()["items"]] == [
+            fruit["id"],
+            milk["id"],
+        ]
+        invalid_reorder = await client.post(
+            "/api/v1/food-folders/reorder",
+            headers=owner_headers,
+            json={"folder_ids": [milk["id"]]},
+        )
+        assert invalid_reorder.status_code == 422
+
+        foreign_delete = await client.delete(
+            f"/api/v1/food-folders/{milk['id']}", headers=other_headers
+        )
+        assert foreign_delete.status_code == 404
+        deleted = await client.delete(
+            f"/api/v1/food-folders/{milk['id']}", headers=owner_headers
+        )
+        assert deleted.status_code == 204
+        unfiled_ingredients = await client.get(
+            "/api/v1/ingredients?folder_id=unfiled", headers=owner_headers
+        )
+        unfiled_dishes = await client.get(
+            "/api/v1/dishes?folder_id=unfiled", headers=owner_headers
+        )
+        assert ingredient["id"] in {
+            item["id"] for item in unfiled_ingredients.json()["items"]
+        }
+        assert dish["id"] in {item["id"] for item in unfiled_dishes.json()["items"]}
+        remaining = await client.get("/api/v1/food-folders", headers=owner_headers)
+        assert [
+            (item["id"], item["sort_order"]) for item in remaining.json()["items"]
+        ] == [(fruit["id"], 0)]

@@ -1,11 +1,13 @@
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  ChevronRight,
   CookingPot,
   Copy,
   Folder,
+  FolderCog,
+  FolderInput,
   Link2,
+  MoreVertical,
   Plus,
   QrCode,
   RefreshCw,
@@ -20,7 +22,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   createSharingPackage,
   fetchDishes,
+  fetchFoodFolders,
   fetchIngredients,
+  moveFoodItems,
   revokeSharingPackage,
   type Dish,
   type FoodKind,
@@ -31,6 +35,7 @@ import {
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
 import { FoodEditorSheet } from "../components/food/FoodEditorSheet";
+import { FolderManagerSheet } from "../components/food/FolderManagerSheet";
 import {
   BottomSheet,
   EmptyState,
@@ -75,6 +80,7 @@ export function FoodPage() {
   const { showToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [kind, setKind] = useState<FoodKind>("ingredients");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -83,6 +89,9 @@ export function FoodPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<FoodItem | null>(null);
   const [share, setShare] = useState<SharingPackage | null>(null);
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const [movingItem, setMovingItem] = useState<FoodItem | null>(null);
+  const [movingSelection, setMovingSelection] = useState(false);
   const shareMutationKey = useRef(mutationKey());
   const editorOpen = location.pathname.startsWith("/food/new") || editing !== null;
 
@@ -98,6 +107,13 @@ export function FoodPage() {
     retry: false,
   });
   const items = foods.data?.pages.flatMap((page) => page.items) ?? [];
+  const foldersQuery = useQuery({
+    queryKey: ["food-folders"],
+    queryFn: () => fetchFoodFolders(initData),
+    enabled: authorized,
+    retry: false,
+  });
+  const folders = foldersQuery.data ?? [];
 
   const sharing = useMutation({
     mutationFn: () =>
@@ -110,6 +126,23 @@ export function FoodPage() {
       setShare(null);
       setSelected(new Set());
       showToast("Ссылка отозвана");
+    },
+  });
+  const moveItems = useMutation({
+    mutationFn: (folderId: string | null) =>
+      moveFoodItems(
+        initData,
+        kind === "ingredients" ? "ingredient" : "dish",
+        movingItem ? [movingItem.id] : [...selected],
+        folderId,
+      ),
+    onSuccess: async () => {
+      setMovingItem(null);
+      setMovingSelection(false);
+      setSelected(new Set());
+      await queryClient.invalidateQueries({ queryKey: ["food"] });
+      await queryClient.invalidateQueries({ queryKey: ["food-folders"] });
+      showToast("Позиции перемещены");
     },
   });
 
@@ -160,8 +193,9 @@ export function FoodPage() {
           <button type="button" className="icon-button icon-button--primary" aria-label="Добавить" title="Добавить" onClick={openCreate}><Plus aria-hidden="true" /></button>
         </div>
         <div className="food-filter-row">
-          <label><Folder aria-hidden="true" /><span className="sr-only">Папка</span><select value={folder} onChange={(event) => setFolder(event.target.value)}><option value="">Все продукты</option><option value="unfiled">Без папки</option></select></label>
+          <label><Folder aria-hidden="true" /><span className="sr-only">Папка</span><select value={folder} onChange={(event) => setFolder(event.target.value)}><option value="">Все продукты</option><option value="unfiled">Без папки</option>{folders.map((item) => <option key={item.id} value={item.id}>{item.name} ({kind === "ingredients" ? item.ingredient_count : item.dish_count})</option>)}</select></label>
           <label><span className="sr-only">Сортировка</span><select value={sort} onChange={(event) => setSort(event.target.value as FoodSort)}><option value="name_asc">По названию А–Я</option><option value="name_desc">По названию Я–А</option><option value="newest">Сначала новые</option><option value="oldest">Сначала старые</option></select></label>
+          <button type="button" className="icon-button" aria-label="Управлять папками" title="Управлять папками" onClick={() => setFoldersOpen(true)}><FolderCog aria-hidden="true" /></button>
         </div>
       </div>
 
@@ -169,6 +203,7 @@ export function FoodPage() {
         <div className="selection-bar">
           <strong>Выбрано: {selected.size}</strong>
           <button type="button" className="button-secondary button-with-icon" onClick={() => setSelected(new Set())}><X aria-hidden="true" size={17} />Снять</button>
+          <button type="button" className="button-secondary button-with-icon" onClick={() => setMovingSelection(true)}><FolderInput aria-hidden="true" size={17} />В папку</button>
           <button type="button" className="button-primary button-with-icon" disabled={sharing.isPending} onClick={() => sharing.mutate()}><Share2 aria-hidden="true" size={17} />Поделиться</button>
         </div>
       )}
@@ -192,7 +227,7 @@ export function FoodPage() {
                     <NutritionLine item={item} />
                     {isDish(item) && <small>{item.components.length} {item.components.length === 1 ? "компонент" : "компонента"}</small>}
                   </button>
-                  <button type="button" className="food-open" aria-label={`Открыть ${item.name}`} onClick={() => setEditing(item)}><ChevronRight aria-hidden="true" /></button>
+                  <button type="button" className="food-folder-action" aria-label={`Переместить ${item.name} в папку`} title="Переместить в папку" onClick={() => setMovingItem(item)}><MoreVertical aria-hidden="true" /></button>
                 </article>
               );
             })}
@@ -203,7 +238,17 @@ export function FoodPage() {
         )}
       </section>
 
-      {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : new URLSearchParams(location.search).get("kind") === "dishes" ? "dishes" : kind} item={editing} initData={initData} authorized={authorized} onClose={closeEditor} onOpenExisting={openExisting} />}
+      {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : new URLSearchParams(location.search).get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} onClose={closeEditor} onOpenExisting={openExisting} />}
+
+      <FolderManagerSheet open={foldersOpen} initData={initData} folders={folders} onClose={() => setFoldersOpen(false)} />
+
+      <BottomSheet open={movingItem !== null || movingSelection} title="Переместить в папку" onClose={() => { setMovingItem(null); setMovingSelection(false); }}>
+        <div className="folder-picker-list">
+          <button type="button" className="action-row" disabled={moveItems.isPending} onClick={() => moveItems.mutate(null)}><span><strong>Без папки</strong><small>Убрать текущую привязку</small></span></button>
+          {folders.map((item) => <button type="button" className="action-row" key={item.id} disabled={moveItems.isPending} onClick={() => moveItems.mutate(item.id)}><span><strong>{item.name}</strong><small>{item.item_count} поз.</small></span></button>)}
+        </div>
+        {moveItems.error && <p className="form-error">{moveItems.error.message}</p>}
+      </BottomSheet>
 
       <BottomSheet open={share !== null} title="Ссылка для обмена" onClose={() => setShare(null)}>
         {share && <div className="share-result">
