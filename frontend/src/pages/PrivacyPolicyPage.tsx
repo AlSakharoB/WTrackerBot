@@ -1,4 +1,4 @@
-import { ArrowLeft, Database, LockKeyhole, Trash2 } from "lucide-react";
+import { ArrowLeft, Database, LockKeyhole, ScanBarcode, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export function PrivacyPolicyPage() {
@@ -33,6 +33,17 @@ export function PrivacyPolicyPage() {
             <p>
               Данные используются только для работы WTrackerBot и не продаются.
               Авторизация Mini App проверяется по подписи Telegram.
+            </p>
+          </div>
+        </section>
+        <section>
+          <ScanBarcode aria-hidden="true" />
+          <div>
+            <h2>Штрихкоды и камера</h2>
+            <p>
+              Камера включается только по вашему действию, а видеопоток не
+              загружается на сервер. Штрихкод передается сервером в Open Food
+              Facts для поиска сведений о продукте.
             </p>
           </div>
         </section>

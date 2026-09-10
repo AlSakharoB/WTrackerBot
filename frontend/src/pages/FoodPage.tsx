@@ -35,6 +35,7 @@ import {
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
 import { FoodEditorSheet } from "../components/food/FoodEditorSheet";
+import { BarcodeScannerSheet } from "../components/food/BarcodeScannerSheet";
 import { FolderManagerSheet } from "../components/food/FolderManagerSheet";
 import {
   BottomSheet,
@@ -90,6 +91,7 @@ export function FoodPage() {
   const [editing, setEditing] = useState<FoodItem | null>(null);
   const [share, setShare] = useState<SharingPackage | null>(null);
   const [foldersOpen, setFoldersOpen] = useState(false);
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [movingItem, setMovingItem] = useState<FoodItem | null>(null);
   const [movingSelection, setMovingSelection] = useState(false);
   const shareMutationKey = useRef(mutationKey());
@@ -189,7 +191,7 @@ export function FoodPage() {
             <label className="sr-only" htmlFor="food-search">Поиск еды</label>
             <input id="food-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={kind === "ingredients" ? "Найти ингредиент" : "Найти блюдо"} />
           </div>
-          <button type="button" className="icon-button" aria-label="Сканировать штрихкод" title="Сканировать штрихкод" disabled><QrCode aria-hidden="true" /></button>
+          <button type="button" className="icon-button" aria-label="Сканировать штрихкод" title="Сканировать штрихкод" onClick={() => setBarcodeScannerOpen(true)}><QrCode aria-hidden="true" /></button>
           <button type="button" className="icon-button icon-button--primary" aria-label="Добавить" title="Добавить" onClick={openCreate}><Plus aria-hidden="true" /></button>
         </div>
         <div className="food-filter-row">
@@ -239,6 +241,8 @@ export function FoodPage() {
       </section>
 
       {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : new URLSearchParams(location.search).get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} onClose={closeEditor} onOpenExisting={openExisting} />}
+
+      <BarcodeScannerSheet open={barcodeScannerOpen} initData={initData} folders={folders} onClose={() => setBarcodeScannerOpen(false)} onOpenExisting={openExisting} />
 
       <FolderManagerSheet open={foldersOpen} initData={initData} folders={folders} onClose={() => setFoldersOpen(false)} />
 

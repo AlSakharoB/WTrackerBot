@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TelegramAdapter } from "../telegram/adapter";
+import { stopVideoTracks } from "../components/food/camera";
 import { App } from "./App";
 
 function createPreviewAdapter(overrides: Partial<TelegramAdapter> = {}): TelegramAdapter {
@@ -88,6 +89,36 @@ describe("Mini App routes", () => {
     expect(screen.getByRole("dialog", { name: "Папки еды" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Новая папка")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Создать папку" })).toBeDisabled();
+  });
+
+  it("offers manual barcode entry when the camera is unavailable", () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: undefined,
+    });
+    renderApp("/food");
+    fireEvent.click(screen.getByRole("button", { name: "Сканировать штрихкод" }));
+    expect(screen.getByRole("dialog", { name: "Добавить по штрихкоду" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Включить камеру" }));
+    expect(screen.getByText(/Камера недоступна/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Штрихкод")).toBeInTheDocument();
+  });
+
+  it("stops every camera track", () => {
+    const first = { stop: vi.fn() };
+    const second = { stop: vi.fn() };
+    const video = document.createElement("video");
+    Object.defineProperty(video, "srcObject", {
+      configurable: true,
+      writable: true,
+      value: { getTracks: () => [first, second] },
+    });
+
+    stopVideoTracks(video);
+
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(second.stop).toHaveBeenCalledOnce();
+    expect(video.srcObject).toBeNull();
   });
 
   it("opens the ration source picker as a nested route", () => {

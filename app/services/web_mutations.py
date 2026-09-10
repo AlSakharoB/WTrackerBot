@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.exceptions import IdempotencyConflictError, ValidationError
 from app.repositories.account_deletion import AccountDeletionRepository
+from app.repositories.external_products import ExternalProductRepository
 from app.repositories.web_mutations import WebMutationReceiptRepository
 
 logger = logging.getLogger(__name__)
@@ -118,9 +119,10 @@ async def run_web_mutation_receipt_cleanup(
                     now
                 )
                 deleted += await AccountDeletionRepository(session).delete_expired(now)
+                deleted += await ExternalProductRepository(session).delete_expired(now)
             if deleted:
                 logger.info(
-                    "Expired Web API mutation receipts removed count=%d",
+                    "Expired Web API maintenance records removed count=%d",
                     deleted,
                     extra={"operation": "web.idempotency.cleanup"},
                 )

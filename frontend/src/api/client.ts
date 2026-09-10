@@ -306,6 +306,34 @@ export interface FoodFolder {
   updated_at: string;
 }
 
+export interface BarcodeLookup {
+  barcode: string;
+  found: boolean;
+  name: string | null;
+  brand: string | null;
+  package_weight_g: string | null;
+  package_quantity: string | null;
+  package_quantity_unit: string | null;
+  serving_size: string | null;
+  nutrition_per_100g: {
+    energy_kcal: string | null;
+    protein_g: string | null;
+    fat_g: string | null;
+    carbs_g: string | null;
+  };
+  photo_url: string | null;
+  missing_fields: string[];
+  derived_fields: string[];
+  source: "open_food_facts";
+  source_url: string;
+  confirmation_token: string;
+}
+
+export interface BarcodeIngredientInput extends IngredientInput {
+  confirmation_token: string;
+  confirmed: true;
+}
+
 export interface FoodPageResult<T> {
   items: T[];
   next_cursor: string | null;
@@ -926,6 +954,32 @@ export async function moveFoodItems(
     body: JSON.stringify({ type, item_ids: itemIds, folder_id: folderId }),
   });
   await parseResponse(response, "Не удалось переместить позиции");
+}
+
+export async function lookupBarcode(
+  initData: string,
+  barcode: string,
+): Promise<BarcodeLookup> {
+  const response = await fetch("/api/v1/barcodes/lookup", {
+    method: "POST",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify({ barcode }),
+  });
+  return parseResponse(response, "Не удалось проверить штрихкод");
+}
+
+export async function createBarcodeIngredient(
+  initData: string,
+  barcode: string,
+  input: BarcodeIngredientInput,
+  idempotencyKey: string,
+): Promise<Ingredient> {
+  const response = await fetch(`/api/v1/barcodes/${barcode}/create-ingredient`, {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось создать ингредиент");
 }
 
 export async function createSharingPackage(

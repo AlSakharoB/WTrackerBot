@@ -3,6 +3,10 @@
 from app.db.models.account_deletion import AccountDeletionRequest
 from app.db.models.diary import DiaryEntry, DiaryEntryType, MealType
 from app.db.models.dish import Dish, DishIngredient
+from app.db.models.external_product import (
+    ExternalProductCache,
+    IngredientExternalSource,
+)
 from app.db.models.food_folder import FoodFolder, FoodFolderItem
 from app.db.models.goal import GoalStatus, WeightGoal
 from app.db.models.ingredient import Ingredient
@@ -26,10 +30,12 @@ __all__ = [
     "DiaryEntryType",
     "Dish",
     "DishIngredient",
+    "ExternalProductCache",
     "FoodFolder",
     "FoodFolderItem",
     "GoalStatus",
     "Ingredient",
+    "IngredientExternalSource",
     "MealType",
     "NutritionGoal",
     "ReminderSetting",

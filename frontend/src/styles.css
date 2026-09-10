@@ -493,6 +493,33 @@ h1, h2, h3 { letter-spacing: 0; }
 .food-row__content small { color: var(--app-link); font-size: 10px; }
 .food-folder-action { width: 34px; height: 38px; display: grid; place-items: center; padding: 0; border: 0; color: var(--app-muted); background: transparent; cursor: pointer; }
 .food-folder-action svg { width: 19px; }
+.barcode-scanner, .barcode-review { display: grid; gap: 15px; }
+.scanner-preview { position: relative; width: 100%; aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--app-border); border-radius: 7px; color: var(--app-muted); background: #17191b; }
+.scanner-preview > svg { width: 42px; height: 42px; opacity: .55; }
+.scanner-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scanner-frame { position: absolute; z-index: 1; width: min(78%, 310px); aspect-ratio: 2.15 / 1; border: 2px solid rgb(255 255 255 / 88%); border-radius: 6px; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%); opacity: 0; }
+.scanner-preview.is-active .scanner-frame { opacity: 1; }
+.scanner-actions { display: flex; align-items: center; gap: 8px; }
+.scanner-actions > :first-child { flex: 1; }
+.scanner-actions .icon-button.is-active { color: var(--app-primary-text); border-color: var(--app-primary); background: var(--app-primary); }
+.scanner-message { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 11px; border-left: 3px solid var(--macro-energy); color: var(--app-text); background: color-mix(in srgb, var(--macro-energy) 8%, var(--app-surface)); font-size: 12px; line-height: 1.45; }
+.scanner-message svg { width: 17px; height: 17px; flex: 0 0 17px; color: var(--macro-energy); }
+.barcode-manual { display: grid; grid-template-columns: 22px minmax(0, 1fr) 44px; align-items: center; gap: 8px; }
+.barcode-manual > svg { width: 19px; height: 19px; color: var(--app-muted); }
+.barcode-manual input { min-width: 0; height: 44px; padding: 0 11px; border: 1px solid var(--app-border); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 16px; }
+.scanner-status { margin: 0; color: var(--app-muted); font-size: 12px; text-align: center; }
+.barcode-product-heading { min-width: 0; display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--app-border); }
+.barcode-product-heading > img, .barcode-product-heading > div { width: 72px; height: 72px; border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-bg); object-fit: contain; }
+.barcode-product-heading > div { display: grid; place-items: center; color: var(--app-muted); }
+.barcode-product-heading > div svg { width: 30px; height: 30px; }
+.barcode-product-heading > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.barcode-product-heading strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.barcode-product-heading small { overflow: hidden; color: var(--app-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.barcode-product-heading code { color: var(--app-link); font-size: 11px; }
+.barcode-warnings { padding: 10px 11px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-bg); }
+.barcode-warnings p { margin: 0; color: var(--app-muted); font-size: 11px; line-height: 1.45; }
+.barcode-warnings p + p { margin-top: 4px; }
+.off-attribution { width: fit-content; color: var(--app-link); font-size: 12px; font-weight: 700; }
 .folder-create { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; margin-bottom: 18px; }
 .folder-create input { min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--app-border); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 16px; }
 .folder-manager-list { display: grid; border-top: 1px solid var(--app-border); }

@@ -81,6 +81,27 @@ class Settings(BaseSettings):
         ge=60,
         le=86_400,
     )
+    open_food_facts_base_url: AnyHttpUrl = AnyHttpUrl("https://world.openfoodfacts.org")
+    open_food_facts_user_agent: str = Field(
+        default="WTrackerBot/0.4 (https://github.com/sakharov/WTrackerBot)",
+        min_length=10,
+        max_length=255,
+    )
+    open_food_facts_timeout_seconds: float = Field(default=6, ge=1, le=30)
+    open_food_facts_retries: int = Field(default=1, ge=0, le=3)
+    open_food_facts_concurrency: int = Field(default=4, ge=1, le=20)
+    open_food_facts_max_response_bytes: int = Field(
+        default=524_288, ge=16_384, le=2_097_152
+    )
+    open_food_facts_positive_cache_seconds: int = Field(
+        default=86_400, ge=300, le=604_800
+    )
+    open_food_facts_negative_cache_seconds: int = Field(default=1800, ge=60, le=86_400)
+    open_food_facts_circuit_failures: int = Field(default=5, ge=1, le=50)
+    open_food_facts_circuit_cooldown_seconds: int = Field(default=60, ge=10, le=3600)
+    barcode_rate_limit_count: int = Field(default=10, ge=1, le=1000)
+    barcode_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    barcode_confirmation_ttl_seconds: int = Field(default=900, ge=60, le=3600)
 
     model_config = SettingsConfigDict(
         env_file=".env",

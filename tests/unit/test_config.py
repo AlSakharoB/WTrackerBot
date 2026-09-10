@@ -59,6 +59,16 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.miniapp_cors_origins == ("http://localhost:5173",)
     assert settings.web_mutation_receipt_ttl_hours == 24
     assert settings.web_mutation_receipt_cleanup_seconds == 3600
+    assert str(settings.open_food_facts_base_url) == "https://world.openfoodfacts.org/"
+    assert settings.open_food_facts_timeout_seconds == 6
+    assert settings.open_food_facts_retries == 1
+    assert settings.open_food_facts_concurrency == 4
+    assert settings.open_food_facts_max_response_bytes == 524_288
+    assert settings.open_food_facts_positive_cache_seconds == 86_400
+    assert settings.open_food_facts_negative_cache_seconds == 1800
+    assert settings.barcode_rate_limit_count == 10
+    assert settings.barcode_rate_limit_window_seconds == 60
+    assert settings.barcode_confirmation_ttl_seconds == 900
 
 
 def test_settings_normalize_log_level() -> None:
