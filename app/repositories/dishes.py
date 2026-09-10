@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import String, column, delete, func, select, true, update, values
@@ -300,6 +301,61 @@ class DishRepository:
                 user_id,
             )
         }
+        return [by_id[dish.id] for dish in dishes if dish.id in by_id]
+
+    async def search_records_cursor(
+        self,
+        user_id: int,
+        *,
+        query: str | None,
+        sort: str,
+        cursor_name: str | None,
+        cursor_created_at: datetime | None,
+        cursor_id: int | None,
+        limit: int,
+    ) -> list[DishRecord]:
+        statement = select(Dish).where(Dish.user_id == user_id)
+        if query:
+            statement = statement.where(
+                Dish.name_normalized.contains(query, autoescape=True)
+            )
+        if sort == "name_desc":
+            if cursor_name is not None and cursor_id is not None:
+                statement = statement.where(
+                    (Dish.name_normalized < cursor_name)
+                    | ((Dish.name_normalized == cursor_name) & (Dish.id < cursor_id))
+                )
+            ordering = (Dish.name_normalized.desc(), Dish.id.desc())
+        elif sort in {"newest", "oldest"}:
+            descending = sort == "newest"
+            if cursor_created_at is not None and cursor_id is not None:
+                comparison = (
+                    (Dish.created_at < cursor_created_at)
+                    | ((Dish.created_at == cursor_created_at) & (Dish.id < cursor_id))
+                    if descending
+                    else (Dish.created_at > cursor_created_at)
+                    | ((Dish.created_at == cursor_created_at) & (Dish.id > cursor_id))
+                )
+                statement = statement.where(comparison)
+            ordering = (
+                (Dish.created_at.desc(), Dish.id.desc())
+                if descending
+                else (Dish.created_at, Dish.id)
+            )
+        else:
+            if cursor_name is not None and cursor_id is not None:
+                statement = statement.where(
+                    (Dish.name_normalized > cursor_name)
+                    | ((Dish.name_normalized == cursor_name) & (Dish.id > cursor_id))
+                )
+            ordering = (Dish.name_normalized, Dish.id)
+        dishes = list(
+            (
+                await self._session.scalars(statement.order_by(*ordering).limit(limit))
+            ).all()
+        )
+        records = await self.get_by_ids({dish.id for dish in dishes}, user_id)
+        by_id = {record.dish.id: record for record in records}
         return [by_id[dish.id] for dish in dishes if dish.id in by_id]
 
     async def delete(self, dish_id: int, user_id: int) -> bool:

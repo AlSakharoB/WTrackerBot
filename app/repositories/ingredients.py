@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import String, column, delete, func, select, true, update, values
@@ -27,6 +28,10 @@ class IngredientRepository:
         protein_per_100g: Decimal,
         fat_per_100g: Decimal,
         carbs_per_100g: Decimal,
+        package_weight_g: Decimal | None = None,
+        photo_url: str | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
     ) -> Ingredient:
         statement = (
             insert(Ingredient)
@@ -38,6 +43,10 @@ class IngredientRepository:
                 protein_per_100g=protein_per_100g,
                 fat_per_100g=fat_per_100g,
                 carbs_per_100g=carbs_per_100g,
+                package_weight_g=package_weight_g,
+                photo_url=photo_url,
+                source_name=source_name,
+                source_url=source_url,
             )
             .on_conflict_do_nothing(
                 index_elements=[Ingredient.user_id, Ingredient.name_normalized]
@@ -195,11 +204,73 @@ class IngredientRepository:
         ).limit(limit)
         return list((await self._session.scalars(statement)).all())
 
+    async def search_cursor(
+        self,
+        user_id: int,
+        *,
+        query: str | None,
+        sort: str,
+        cursor_name: str | None,
+        cursor_created_at: datetime | None,
+        cursor_id: int | None,
+        limit: int,
+    ) -> list[Ingredient]:
+        statement = select(Ingredient).where(Ingredient.user_id == user_id)
+        if query:
+            statement = statement.where(
+                Ingredient.name_normalized.contains(query, autoescape=True)
+            )
+
+        if sort == "name_desc":
+            if cursor_name is not None and cursor_id is not None:
+                statement = statement.where(
+                    (Ingredient.name_normalized < cursor_name)
+                    | (
+                        (Ingredient.name_normalized == cursor_name)
+                        & (Ingredient.id < cursor_id)
+                    )
+                )
+            ordering = (Ingredient.name_normalized.desc(), Ingredient.id.desc())
+        elif sort in {"newest", "oldest"}:
+            descending = sort == "newest"
+            if cursor_created_at is not None and cursor_id is not None:
+                comparison = (
+                    (Ingredient.created_at < cursor_created_at)
+                    | (
+                        (Ingredient.created_at == cursor_created_at)
+                        & (Ingredient.id < cursor_id)
+                    )
+                    if descending
+                    else (Ingredient.created_at > cursor_created_at)
+                    | (
+                        (Ingredient.created_at == cursor_created_at)
+                        & (Ingredient.id > cursor_id)
+                    )
+                )
+                statement = statement.where(comparison)
+            ordering = (
+                (Ingredient.created_at.desc(), Ingredient.id.desc())
+                if descending
+                else (Ingredient.created_at, Ingredient.id)
+            )
+        else:
+            if cursor_name is not None and cursor_id is not None:
+                statement = statement.where(
+                    (Ingredient.name_normalized > cursor_name)
+                    | (
+                        (Ingredient.name_normalized == cursor_name)
+                        & (Ingredient.id > cursor_id)
+                    )
+                )
+            ordering = (Ingredient.name_normalized, Ingredient.id)
+        statement = statement.order_by(*ordering).limit(limit)
+        return list((await self._session.scalars(statement)).all())
+
     async def update(
         self,
         ingredient_id: int,
         user_id: int,
-        values: dict[str, str | Decimal],
+        values: dict[str, str | Decimal | None],
     ) -> Ingredient | None:
         statement = (
             update(Ingredient)

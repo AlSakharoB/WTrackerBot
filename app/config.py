@@ -59,6 +59,7 @@ class Settings(BaseSettings):
         ge=1024,
         le=1_048_576,
     )
+    bot_username: str | None = Field(default=None, min_length=5, max_length=33)
     miniapp_enabled: bool = False
     miniapp_public_url: AnyHttpUrl = AnyHttpUrl("http://localhost:5173")
     miniapp_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
@@ -140,6 +141,13 @@ class Settings(BaseSettings):
             return value
         origins = tuple(item.strip().rstrip("/") for item in value.split(","))
         return tuple(origin for origin in origins if origin)
+
+    @field_validator("bot_username", mode="before")
+    @classmethod
+    def parse_optional_bot_username(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().removeprefix("@") or None
+        return value
 
     @model_validator(mode="after")
     def reject_production_backup_bypass(self) -> "Settings":

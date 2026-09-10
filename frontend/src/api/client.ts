@@ -236,6 +236,115 @@ export interface WeightGoalUpdate {
   target_date?: string | null;
 }
 
+export type FoodKind = "ingredients" | "dishes";
+export type FoodSort = "name_asc" | "name_desc" | "newest" | "oldest";
+
+export interface FoodNutrition {
+  energy_kcal: string;
+  protein_g: string;
+  fat_g: string;
+  carbs_g: string;
+}
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  nutrition_per_100g: FoodNutrition;
+  folder_id: string | null;
+  package_weight_g: string | null;
+  photo_url: string | null;
+  source_name: string | null;
+  source_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IngredientInput {
+  name: string;
+  energy_kcal_per_100g: string;
+  protein_g_per_100g: string;
+  fat_g_per_100g: string;
+  carbs_g_per_100g: string;
+  package_weight_g?: string | null;
+  photo_url?: string | null;
+  source_name?: string | null;
+  source_url?: string | null;
+}
+
+export interface DishComponent {
+  ingredient: Ingredient;
+  grams: string;
+}
+
+export interface Dish {
+  id: string;
+  name: string;
+  total_weight_g: string;
+  nutrition_total: FoodNutrition;
+  nutrition_per_100g: FoodNutrition;
+  components: DishComponent[];
+  folder_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DishInput {
+  name: string;
+  components: Array<{ ingredient_id: string; grams: string }>;
+}
+
+export interface FoodPageResult<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+export interface DeleteConsequence {
+  can_delete: boolean;
+  message: string;
+  dependencies: string[];
+}
+
+export interface SharingPackage {
+  id: string;
+  type: FoodKind;
+  item_count: number;
+  deep_link: string;
+  telegram_share_url: string;
+  expires_at: string;
+}
+
+export interface SharingIngredientPreview {
+  key: string;
+  name: string;
+  nutrition_per_100g: FoodNutrition;
+  conflict_type: "new" | "exact_same" | "name_conflict" | "similar_conflict";
+  existing: Ingredient | null;
+}
+
+export interface SharingDishPreview {
+  key: string;
+  name: string;
+  conflict_type: "new" | "name_conflict" | "similar_conflict";
+  existing_id: string | null;
+}
+
+export interface SharingPreview {
+  package_id: string;
+  type: FoodKind;
+  item_count: number;
+  is_owner: boolean;
+  already_imported: boolean;
+  expires_at: string;
+  ingredients: SharingIngredientPreview[];
+  dishes: SharingDishPreview[];
+}
+
+export interface SharingImportResult {
+  already_imported: boolean;
+  created_ingredients: number;
+  created_dishes: number;
+}
+
 export type ThemeMode = "system" | "light" | "dark";
 export type DefaultSection = "ration" | "food" | "weight" | "profile";
 
@@ -252,7 +361,7 @@ export type UIPreferencesUpdate = Partial<
 >;
 
 interface ErrorEnvelope {
-  error?: { message?: string; correlation_id?: string };
+  error?: { message?: string; correlation_id?: string; details?: Record<string, unknown> };
 }
 
 export class APIError extends Error {
@@ -260,6 +369,7 @@ export class APIError extends Error {
     message: string,
     public readonly status: number,
     public readonly correlationId?: string,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -275,6 +385,7 @@ export async function fetchCurrentUser(initData: string): Promise<CurrentUser> {
       payload.error?.message ?? "Не удалось загрузить профиль",
       response.status,
       payload.error?.correlation_id,
+      payload.error?.details,
     );
   }
   return (await response.json()) as CurrentUser;
@@ -287,6 +398,7 @@ async function parseResponse<T>(response: Response, fallback: string): Promise<T
       payload.error?.message ?? fallback,
       response.status,
       payload.error?.correlation_id,
+      payload.error?.details,
     );
   }
   return (await response.json()) as T;
@@ -617,4 +729,174 @@ export async function updateWeightGoal(
     body: JSON.stringify(update),
   });
   return parseResponse(response, "Не удалось сохранить цель веса");
+}
+
+export async function fetchIngredients(
+  initData: string,
+  query: string,
+  sort: FoodSort,
+  cursor?: string,
+  folderId?: string,
+): Promise<FoodPageResult<Ingredient>> {
+  const params = new URLSearchParams({ sort });
+  if (query.trim()) params.set("query", query.trim());
+  if (cursor) params.set("cursor", cursor);
+  if (folderId) params.set("folder_id", folderId);
+  const response = await fetch(`/api/v1/ingredients?${params}`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить ингредиенты");
+}
+
+export async function createIngredient(
+  initData: string,
+  input: IngredientInput,
+  idempotencyKey: string,
+): Promise<Ingredient> {
+  const response = await fetch("/api/v1/ingredients", {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось создать ингредиент");
+}
+
+export async function updateIngredient(
+  initData: string,
+  id: string,
+  input: Partial<IngredientInput>,
+): Promise<Ingredient> {
+  const response = await fetch(`/api/v1/ingredients/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось изменить ингредиент");
+}
+
+export async function fetchDishes(
+  initData: string,
+  query: string,
+  sort: FoodSort,
+  cursor?: string,
+  folderId?: string,
+): Promise<FoodPageResult<Dish>> {
+  const params = new URLSearchParams({ sort });
+  if (query.trim()) params.set("query", query.trim());
+  if (cursor) params.set("cursor", cursor);
+  if (folderId) params.set("folder_id", folderId);
+  const response = await fetch(`/api/v1/dishes?${params}`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить блюда");
+}
+
+export async function createDish(
+  initData: string,
+  input: DishInput,
+  idempotencyKey: string,
+): Promise<Dish> {
+  const response = await fetch("/api/v1/dishes", {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось создать блюдо");
+}
+
+export async function updateDish(
+  initData: string,
+  id: string,
+  input: DishInput,
+): Promise<Dish> {
+  const response = await fetch(`/api/v1/dishes/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось изменить блюдо");
+}
+
+export async function fetchDeleteConsequence(
+  initData: string,
+  kind: FoodKind,
+  id: string,
+): Promise<DeleteConsequence> {
+  const response = await fetch(`/api/v1/${kind}/${id}/delete-consequences`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось проверить связи");
+}
+
+export async function deleteFood(
+  initData: string,
+  kind: FoodKind,
+  id: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/${kind}/${id}`, {
+    method: "DELETE",
+    headers: authorizationHeaders(initData),
+  });
+  if (!response.ok) await parseResponse(response, "Не удалось удалить запись");
+}
+
+export async function createSharingPackage(
+  initData: string,
+  type: FoodKind,
+  itemIds: string[],
+  idempotencyKey: string,
+): Promise<SharingPackage> {
+  const response = await fetch("/api/v1/sharing/packages", {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify({ type, item_ids: itemIds }),
+  });
+  return parseResponse(response, "Не удалось создать ссылку");
+}
+
+export async function revokeSharingPackage(
+  initData: string,
+  id: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/sharing/packages/${id}`, {
+    method: "DELETE",
+    headers: authorizationHeaders(initData),
+  });
+  if (!response.ok) await parseResponse(response, "Не удалось отозвать ссылку");
+}
+
+export async function fetchSharingPreview(
+  initData: string,
+  token: string,
+): Promise<SharingPreview> {
+  const response = await fetch(`/api/v1/sharing/packages/${token}/preview`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось открыть пакет");
+}
+
+export async function importSharingPackage(
+  initData: string,
+  token: string,
+  preview: SharingPreview,
+): Promise<SharingImportResult> {
+  const ingredientDecisions = Object.fromEntries(
+    preview.ingredients
+      .filter((item) => item.conflict_type === "name_conflict" || item.conflict_type === "similar_conflict")
+      .map((item) => [item.key, "reuse"]),
+  );
+  const dishDecisions = Object.fromEntries(
+    preview.dishes
+      .filter((item) => item.conflict_type !== "new")
+      .map((item) => [item.key, "create_copy"]),
+  );
+  const response = await fetch(`/api/v1/sharing/packages/${token}/import`, {
+    method: "POST",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify({
+      ingredient_decisions: ingredientDecisions,
+      dish_decisions: dishDecisions,
+    }),
+  });
+  return parseResponse(response, "Не удалось импортировать пакет");
 }

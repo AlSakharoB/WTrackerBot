@@ -16,6 +16,7 @@ import { FoodPage } from "../pages/FoodPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { PrivacyPolicyPage } from "../pages/PrivacyPolicyPage";
 import { RationPage } from "../pages/RationPage";
+import { SharePreviewPage } from "../pages/SharePreviewPage";
 import type { TelegramAdapter } from "../telegram/adapter";
 import { useTelegramEnvironment } from "../telegram/hooks";
 import type { MiniAppContext } from "./context";
@@ -145,6 +146,7 @@ export function App({ telegram }: AppProps) {
           <Route path="/ration/add" element={<RationPage />} />
           <Route path="/food" element={<FoodPage />} />
           <Route path="/food/new" element={<FoodPage />} />
+          <Route path="/food/share/:token" element={<SharePreviewPage />} />
           <Route
             path="/weight"
             element={<Suspense fallback={<div className="page"><Skeleton lines={7} /></div>}><WeightPage /></Suspense>}

@@ -464,6 +464,94 @@ h1, h2, h3 { letter-spacing: 0; }
 .search-field:focus-within { border-color: var(--focus-ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 18%, transparent); }
 .search-field input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--app-text); background: transparent; font-size: 16px; }
 .search-field input::placeholder { color: var(--app-muted); opacity: 1; }
+
+.food-controls { display: grid; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--app-border); }
+.food-search-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 8px; }
+.food-search-row .search-field { margin: 0; }
+.icon-button--primary { color: var(--app-primary-text); border-color: var(--app-primary); background: var(--app-primary); }
+.food-filter-row { display: flex; gap: 8px; justify-content: space-between; }
+.food-filter-row label { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--app-muted); }
+.food-filter-row label:first-child { flex: 1; }
+.food-filter-row svg { flex: 0 0 17px; width: 17px; height: 17px; }
+.food-filter-row select { min-width: 0; max-width: 100%; min-height: 38px; padding: 0 28px 0 9px; border: 1px solid var(--app-border); border-radius: 6px; color: var(--app-text); background: var(--app-surface); font-size: 13px; }
+.selection-bar { position: sticky; z-index: 12; top: calc(63px + max(var(--app-safe-top), var(--app-content-safe-top))); display: flex; align-items: center; gap: 8px; margin: 0 -4px; padding: 9px 4px; border-bottom: 1px solid var(--app-border); background: color-mix(in srgb, var(--app-bg) 95%, transparent); backdrop-filter: blur(10px); }
+.selection-bar strong { margin-right: auto; font-size: 13px; }
+.selection-bar button { min-height: 36px; padding: 0 10px; font-size: 12px; }
+.food-catalog { min-height: 260px; padding-top: 8px; }
+.food-list { display: flex; flex-direction: column; }
+.food-row { min-width: 0; min-height: 72px; display: grid; grid-template-columns: 40px minmax(0, 1fr) 34px; align-items: center; gap: 7px; border-bottom: 1px solid var(--app-border); }
+.food-row.is-selected { background: color-mix(in srgb, var(--app-primary) 7%, transparent); }
+.food-select, .food-open { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; color: var(--app-muted); background: transparent; cursor: pointer; }
+.food-select { border: 1px solid var(--app-border); }
+.food-select svg { width: 18px; height: 18px; }
+.food-row.is-selected .food-select { color: var(--app-primary-text); border-color: var(--app-primary); background: var(--app-primary); }
+.food-open svg { width: 19px; height: 19px; }
+.food-row__content { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 11px 0; border: 0; text-align: left; background: transparent; cursor: pointer; }
+.food-row__content strong { width: 100%; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.food-row__content span { color: var(--app-muted); font-size: 11px; line-height: 1.35; }
+.food-row__content small { color: var(--app-link); font-size: 10px; }
+.load-more { align-self: center; margin: 16px 0 8px; }
+.food-editor { display: grid; gap: 15px; }
+.nutrition-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 13px; border: 1px solid var(--app-border); border-radius: 7px; }
+.nutrition-fields legend { padding: 0 5px; color: var(--app-muted); font-size: 12px; font-weight: 700; }
+.ingredient-metadata-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dish-components { display: grid; gap: 6px; }
+.dish-components__heading { display: flex; justify-content: space-between; color: var(--app-muted); font-size: 13px; }
+.dish-components__heading span { min-width: 24px; text-align: center; }
+.dish-component { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 72px auto; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--app-border); }
+.dish-component > div:first-child { min-width: 0; display: flex; flex-direction: column; }
+.dish-component > div:first-child strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.dish-component small { color: var(--app-muted); font-size: 10px; }
+.dish-component label { position: relative; }
+.dish-component label input { width: 100%; height: 36px; padding: 0 22px 0 7px; border: 1px solid var(--app-border); border-radius: 5px; color: var(--app-text); background: var(--app-surface); }
+.dish-component label small { position: absolute; right: 7px; top: 11px; }
+.component-actions { display: flex; }
+.component-actions button { width: 29px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; color: var(--app-muted); background: transparent; cursor: pointer; }
+.component-actions button:disabled { opacity: .25; }
+.component-actions svg { width: 16px; height: 16px; }
+.ingredient-picker-results { max-height: 220px; overflow-y: auto; border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-surface); }
+.ingredient-picker-results button { width: 100%; min-height: 52px; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; padding: 7px 10px; border: 0; border-bottom: 1px solid var(--app-border); color: inherit; text-align: left; background: transparent; cursor: pointer; }
+.ingredient-picker-results button:last-child { border-bottom: 0; }
+.ingredient-picker-results button > span { min-width: 0; display: flex; flex-direction: column; }
+.ingredient-picker-results strong { font-size: 13px; }
+.ingredient-picker-results small { color: var(--app-muted); font-size: 10px; }
+.dish-total { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.dish-total div { min-width: 0; display: flex; flex-direction: column; padding: 8px 5px; border-top: 2px solid var(--macro-energy); background: color-mix(in srgb, var(--macro-energy) 7%, var(--app-surface)); }
+.dish-total div:nth-child(3) { border-top-color: var(--macro-protein); }
+.dish-total div:nth-child(4) { border-top-color: var(--macro-fat); }
+.dish-total div:nth-child(5) { border-top-color: var(--macro-carbs); }
+.dish-total span { color: var(--app-muted); font-size: 9px; }
+.dish-total strong { margin-top: 2px; overflow-wrap: anywhere; font-size: 12px; }
+.duplicate-notice { display: flex; align-items: center; gap: 12px; padding: 11px; border-left: 3px solid var(--macro-energy); background: color-mix(in srgb, var(--macro-energy) 8%, var(--app-surface)); }
+.duplicate-notice div { min-width: 0; display: flex; flex: 1; flex-direction: column; }
+.duplicate-notice strong { font-size: 13px; }
+.duplicate-notice span { color: var(--app-muted); font-size: 12px; }
+.duplicate-notice button, .revoke-link { border: 0; color: var(--app-link); background: transparent; font-weight: 700; cursor: pointer; }
+.sheet-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.sheet-actions > :first-child { margin-right: auto; }
+.sheet-actions a { text-decoration: none; }
+.share-result { display: grid; gap: 16px; }
+.share-link { min-width: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 12px; border: 1px solid var(--app-border); background: var(--app-bg); }
+.share-link svg { width: 19px; height: 19px; color: var(--app-primary); }
+.share-link span { overflow-wrap: anywhere; font-size: 12px; }
+.revoke-link { justify-self: center; color: var(--app-danger); }
+.share-preview-page { display: grid; gap: 18px; }
+.back-link { width: fit-content; display: inline-flex; align-items: center; gap: 6px; color: var(--app-link); font-size: 13px; font-weight: 700; text-decoration: none; }
+.back-link svg { width: 17px; height: 17px; }
+.share-preview-heading { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--app-border); }
+.share-preview-heading > span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 7px; color: var(--app-primary); background: color-mix(in srgb, var(--app-primary) 12%, transparent); }
+.share-preview-heading h1 { margin-bottom: 2px; font-size: 19px; }
+.share-preview-heading p { margin: 0; color: var(--app-muted); font-size: 12px; }
+.share-preview-list { border-top: 1px solid var(--app-border); }
+.share-preview-row { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 9px; padding: 12px 2px; border-bottom: 1px solid var(--app-border); }
+.share-preview-row > svg { width: 19px; height: 19px; color: var(--app-muted); }
+.share-preview-row > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.share-preview-row strong { font-size: 14px; }
+.share-preview-row span { color: var(--app-muted); font-size: 11px; }
+.share-preview-row small { color: var(--app-link); font-size: 11px; }
+.import-button { justify-self: stretch; }
+.import-complete { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; color: var(--app-primary); background: color-mix(in srgb, var(--app-primary) 9%, var(--app-surface)); font-weight: 700; }
+.import-complete svg { width: 20px; height: 20px; }
 .toolbar-row { display: flex; justify-content: space-between; gap: 10px; padding: 14px 0; }
 
 .chart-empty { position: relative; min-height: 280px; overflow: hidden; border-bottom: 1px solid var(--app-border); }

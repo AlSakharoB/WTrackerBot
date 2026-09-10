@@ -26,12 +26,14 @@ class WebAPIError(Exception):
         *,
         status_code: int,
         headers: dict[str, str] | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
         self.headers = headers
+        self.details = details
 
 
 class AuthenticationError(WebAPIError):
@@ -50,6 +52,7 @@ def error_body(
     message: str,
     *,
     field_errors: dict[str, str] | None = None,
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     error: dict[str, Any] = {
         "code": code,
@@ -58,6 +61,8 @@ def error_body(
     }
     if field_errors:
         error["field_errors"] = field_errors
+    if details:
+        error["details"] = details
     return {"error": error}
 
 
@@ -78,7 +83,7 @@ def register_error_handlers(app: FastAPI) -> None:
         error: WebAPIError,
     ) -> JSONResponse:
         return JSONResponse(
-            error_body(request, error.code, error.message),
+            error_body(request, error.code, error.message, details=error.details),
             status_code=error.status_code,
             headers=error.headers,
         )

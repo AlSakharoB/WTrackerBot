@@ -37,6 +37,10 @@ class CreateIngredientData:
     protein_per_100g: Decimal
     fat_per_100g: Decimal
     carbs_per_100g: Decimal
+    package_weight_g: Decimal | None = None
+    photo_url: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +83,21 @@ def _nutrition_error_message(field: IngredientField) -> str:
     return f"Введите число от 0 до {limit}.\nНапример: 150 или 150.5"
 
 
+def parse_package_weight(raw_value: str | Decimal | None) -> Decimal | None:
+    if raw_value is None or not str(raw_value).strip():
+        return None
+    normalized = str(raw_value).strip().replace(",", ".")
+    if fullmatch(r"\d+(?:\.\d+)?", normalized) is None:
+        raise ValidationError("Введите вес упаковки от 0,01 до 1 000 000 г.")
+    try:
+        value = Decimal(normalized)
+    except InvalidOperation as error:
+        raise ValidationError("Введите вес упаковки от 0,01 до 1 000 000 г.") from error
+    if not value.is_finite() or value < Decimal("0.01") or value > Decimal("1000000"):
+        raise ValidationError("Введите вес упаковки от 0,01 до 1 000 000 г.")
+    return value
+
+
 class IngredientService:
     def __init__(self, repository: IngredientRepository) -> None:
         self._repository = repository
@@ -100,6 +119,10 @@ class IngredientService:
             name=name,
             name_normalized=name_normalized,
             **validated,
+            package_weight_g=parse_package_weight(data.package_weight_g),
+            photo_url=data.photo_url,
+            source_name=data.source_name,
+            source_url=data.source_url,
         )
 
     async def create_import_copy(
@@ -119,11 +142,41 @@ class IngredientService:
             name=name,
             name_normalized=name_normalized,
             **validated,
+            package_weight_g=parse_package_weight(data.package_weight_g),
+            photo_url=data.photo_url,
+            source_name=data.source_name,
+            source_url=data.source_url,
         )
 
     async def check_name_available(self, user_id: int, name: str) -> None:
         _, name_normalized = normalize_ingredient_name(name)
         await self._raise_if_similar_name_exists(user_id, name_normalized)
+
+    async def find_similar(
+        self,
+        user_id: int,
+        name: str,
+        *,
+        exclude_id: int | None = None,
+    ) -> Ingredient | None:
+        _, name_normalized = normalize_ingredient_name(name)
+        candidates = await self._repository.find_similar_names(
+            user_id,
+            name_normalized,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.id != exclude_id
+                and not names_have_different_numbers(
+                    name_normalized,
+                    candidate.name_normalized,
+                )
+            ),
+            None,
+        )
 
     async def get(self, user_id: int, ingredient_id: int) -> Ingredient:
         ingredient = await self._repository.get_by_id(ingredient_id, user_id)
@@ -155,15 +208,14 @@ class IngredientService:
         raw_value: str,
     ) -> Ingredient:
         ingredient = await self.get(user_id, ingredient_id)
-        values: dict[str, str | Decimal]
+        values: dict[str, str | Decimal | None]
         if field is IngredientField.NAME:
             name, name_normalized = normalize_ingredient_name(raw_value)
-            duplicate = await self._repository.get_by_normalized_name(
-                user_id,
-                name_normalized,
-            )
-            if duplicate is not None and duplicate.id != ingredient.id:
-                raise DuplicateError("Ингредиент с таким названием уже существует.")
+            duplicate = await self.find_similar(user_id, name, exclude_id=ingredient.id)
+            if duplicate is not None:
+                raise DuplicateError(
+                    f"Похожий ингредиент «{duplicate.name}» уже существует."
+                )
             values = {"name": name, "name_normalized": name_normalized}
         else:
             values = {field.value: parse_nutrition_value(field, raw_value)}

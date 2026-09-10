@@ -120,6 +120,32 @@ class DishService:
         _, name_normalized = normalize_dish_name(name)
         await self._raise_if_similar_name_exists(user_id, name_normalized)
 
+    async def find_similar(
+        self,
+        user_id: int,
+        name: str,
+        *,
+        exclude_id: int | None = None,
+    ) -> Dish | None:
+        _, name_normalized = normalize_dish_name(name)
+        candidates = await self._repository.find_similar_names(
+            user_id,
+            name_normalized,
+            DUPLICATE_NAME_SIMILARITY_THRESHOLD,
+        )
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.id != exclude_id
+                and not names_have_different_numbers(
+                    name_normalized,
+                    candidate.name_normalized,
+                )
+            ),
+            None,
+        )
+
     async def replace(
         self,
         user_id: int,
@@ -129,6 +155,9 @@ class DishService:
     ) -> DishDetails:
         normalized_name, name_key = normalize_dish_name(name)
         validated = await self._validate_components(user_id, components)
+        duplicate = await self.find_similar(user_id, name, exclude_id=dish_id)
+        if duplicate is not None:
+            raise DuplicateError(f"Похожее блюдо «{duplicate.name}» уже существует.")
         dish = await self._repository.replace(
             dish_id=dish_id,
             user_id=user_id,

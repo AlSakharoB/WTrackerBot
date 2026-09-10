@@ -9,6 +9,7 @@ from app.db.session import check_database_connection
 from app.repositories.ui_preferences import UIPreferenceRepository
 from app.services.ui_preferences import UIPreferenceService
 from app.web.dependencies import CurrentUser, DatabaseSession
+from app.web.food_routes import router as food_router
 from app.web.profile_routes import router as profile_router
 from app.web.ration_routes import router as ration_router
 from app.web.schemas import (
@@ -18,6 +19,7 @@ from app.web.schemas import (
     UIPreferencesResponse,
     UIPreferencesUpdateRequest,
 )
+from app.web.sharing_routes import router as sharing_router
 from app.web.weight_routes import router as weight_router
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,8 @@ router = APIRouter()
 router.include_router(profile_router)
 router.include_router(ration_router)
 router.include_router(weight_router)
+router.include_router(food_router)
+router.include_router(sharing_router)
 
 
 @router.get("/internal/healthz", response_model=HealthResponse)

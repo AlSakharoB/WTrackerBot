@@ -45,6 +45,10 @@ class Ingredient(Base):
     protein_per_100g: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     fat_per_100g: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
     carbs_per_100g: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    package_weight_g: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    photo_url: Mapped[str | None] = mapped_column(String(2048))
+    source_name: Mapped[str | None] = mapped_column(String(100))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

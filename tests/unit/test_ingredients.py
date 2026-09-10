@@ -118,6 +118,10 @@ async def test_service_create_validates_and_normalizes_data() -> None:
         protein_per_100g=Decimal("31"),
         fat_per_100g=Decimal("3.6"),
         carbs_per_100g=Decimal("0"),
+        package_weight_g=None,
+        photo_url=None,
+        source_name=None,
+        source_url=None,
     )
 
 

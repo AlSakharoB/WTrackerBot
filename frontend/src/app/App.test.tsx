@@ -70,8 +70,16 @@ describe("Mini App routes", () => {
   it("binds Telegram BackButton for nested or unknown routes", () => {
     const telegram = createPreviewAdapter();
     renderApp("/food/new", telegram);
-    expect(screen.getByRole("dialog", { name: "Добавить еду" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Добавить ингредиент" })).toBeInTheDocument();
     expect(telegram.bindBackButton).toHaveBeenCalledOnce();
+  });
+
+  it("opens the searchable dish editor from a direct route", () => {
+    renderApp("/food/new?kind=dishes");
+    expect(screen.getByRole("dialog", { name: "Добавить блюдо" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Добавить ингредиент")).toBeInTheDocument();
+    expect(screen.getByLabelText("Итоги блюда")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
   });
 
   it("opens the ration source picker as a nested route", () => {
