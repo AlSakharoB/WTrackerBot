@@ -80,6 +80,13 @@ describe("Mini App routes", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
+  it("marks a future ration date explicitly", () => {
+    renderApp("/ration");
+    fireEvent.click(screen.getByRole("button", { name: "Следующий день" }));
+    expect(screen.getByText("Будущая дата")).toBeInTheDocument();
+    expect(screen.getByText("Будущий день")).toBeInTheDocument();
+  });
+
   it("keeps the privacy policy publicly accessible", () => {
     renderApp(
       "/privacy-policy",

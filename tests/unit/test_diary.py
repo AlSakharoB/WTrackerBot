@@ -77,6 +77,39 @@ def test_macro_percentages_are_zero_without_macros() -> None:
     )
 
 
+def test_visible_macro_percentages_use_largest_remainder() -> None:
+    raw = NutritionService.calculate_macro_percentages(
+        protein=Decimal("1"),
+        fat=Decimal("1"),
+        carbs=Decimal("1"),
+    )
+
+    rounded = NutritionService.round_macro_percentages(raw)
+
+    assert rounded == MacroPercentages(
+        protein=Decimal("24"),
+        fat=Decimal("53"),
+        carbs=Decimal("23"),
+    )
+    assert rounded.protein + rounded.fat + rounded.carbs == 100
+
+
+def test_visible_macro_percentages_stay_zero_without_macros() -> None:
+    rounded = NutritionService.round_macro_percentages(
+        MacroPercentages(
+            protein=Decimal("0"),
+            fat=Decimal("0"),
+            carbs=Decimal("0"),
+        )
+    )
+
+    assert rounded == MacroPercentages(
+        protein=Decimal("0"),
+        fat=Decimal("0"),
+        carbs=Decimal("0"),
+    )
+
+
 def test_entry_parsers_accept_supported_formats() -> None:
     assert parse_entry_grams(" 125,5 ") == Decimal("125.5")
     assert parse_entry_date("11.08.2026").isoformat() == "2026-08-11"

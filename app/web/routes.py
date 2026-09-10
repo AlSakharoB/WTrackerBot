@@ -10,6 +10,7 @@ from app.repositories.ui_preferences import UIPreferenceRepository
 from app.services.ui_preferences import UIPreferenceService
 from app.web.dependencies import CurrentUser, DatabaseSession
 from app.web.profile_routes import router as profile_router
+from app.web.ration_routes import router as ration_router
 from app.web.schemas import (
     CurrentUserResponse,
     HealthResponse,
@@ -21,6 +22,7 @@ from app.web.schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(profile_router)
+router.include_router(ration_router)
 
 
 @router.get("/internal/healthz", response_model=HealthResponse)

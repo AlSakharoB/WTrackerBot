@@ -84,6 +84,63 @@ export interface DeletionChallenge {
   expires_at: string;
 }
 
+export interface RationNutrition {
+  energy_kcal: string;
+  protein_g: string;
+  fat_g: string;
+  carbs_g: string;
+}
+
+export interface RationMacroPercentages {
+  protein: number;
+  fat: number;
+  carbs: number;
+}
+
+export interface RationGoal {
+  energy_kcal: string | null;
+  protein_g: string | null;
+  fat_g: string | null;
+  carbs_g: string | null;
+}
+
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack" | "other";
+
+export interface RationEntry {
+  id: string;
+  type: "ingredient" | "dish";
+  source_id: string | null;
+  source_available: boolean;
+  source_name: string;
+  grams: string;
+  meal_type: MealType;
+  nutrition: RationNutrition;
+  created_at: string;
+}
+
+export interface RationMeal {
+  type: MealType;
+  label: string;
+  totals: RationNutrition;
+  entries: RationEntry[];
+}
+
+export interface RationSummary {
+  date: string;
+  timezone: string;
+  number_format: NumberFormat;
+  is_today: boolean;
+  is_future: boolean;
+  entry_count: number;
+  totals: RationNutrition;
+  macro_percentages: RationMacroPercentages;
+  goal: RationGoal | null;
+}
+
+export interface RationDay extends RationSummary {
+  meals: RationMeal[];
+}
+
 export type ThemeMode = "system" | "light" | "dark";
 export type DefaultSection = "ration" | "food" | "weight" | "profile";
 
@@ -304,4 +361,24 @@ export async function confirmAccountDeletion(
     }),
   });
   await parseResponse<unknown>(response, "Не удалось удалить данные");
+}
+
+export async function fetchRationDay(
+  initData: string,
+  date: string,
+): Promise<RationDay> {
+  const response = await fetch(`/api/v1/ration/${date}`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить рацион");
+}
+
+export async function fetchRationSummary(
+  initData: string,
+  date: string,
+): Promise<RationSummary> {
+  const response = await fetch(`/api/v1/ration/${date}/summary`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить итоги рациона");
 }

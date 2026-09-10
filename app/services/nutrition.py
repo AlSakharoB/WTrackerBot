@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 from app.exceptions import ValidationError
 
@@ -159,6 +159,29 @@ class NutritionService:
             protein=protein_energy / total_energy * Decimal("100"),
             fat=fat_energy / total_energy * Decimal("100"),
             carbs=carbs_energy / total_energy * Decimal("100"),
+        )
+
+    @staticmethod
+    def round_macro_percentages(
+        percentages: MacroPercentages,
+    ) -> MacroPercentages:
+        values = [percentages.protein, percentages.fat, percentages.carbs]
+        if all(value == ZERO for value in values):
+            return MacroPercentages(protein=ZERO, fat=ZERO, carbs=ZERO)
+        floors = [
+            int(value.to_integral_value(rounding=ROUND_FLOOR)) for value in values
+        ]
+        remaining = 100 - sum(floors)
+        fractions = [
+            value - Decimal(floor) for value, floor in zip(values, floors, strict=True)
+        ]
+        order = sorted(range(3), key=lambda index: (-fractions[index], index))
+        for index in order[:remaining]:
+            floors[index] += 1
+        return MacroPercentages(
+            protein=Decimal(floors[0]),
+            fat=Decimal(floors[1]),
+            carbs=Decimal(floors[2]),
         )
 
     @staticmethod
