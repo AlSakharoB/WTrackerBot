@@ -18,11 +18,13 @@ from app.web.schemas import (
     UIPreferencesResponse,
     UIPreferencesUpdateRequest,
 )
+from app.web.weight_routes import router as weight_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(profile_router)
 router.include_router(ration_router)
+router.include_router(weight_router)
 
 
 @router.get("/internal/healthz", response_model=HealthResponse)

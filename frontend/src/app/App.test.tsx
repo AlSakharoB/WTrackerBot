@@ -49,15 +49,15 @@ describe("Mini App routes", () => {
     ["/food", "Ингредиенты"],
     ["/weight", "Текущий вес"],
     ["/profile", "Внешний вид"],
-  ])("opens %s directly", (path, heading) => {
+  ])("opens %s directly", async (path, heading) => {
     renderApp(path);
-    expect(screen.getByText(heading)).toBeInTheDocument();
+    expect(await screen.findByText(heading)).toBeInTheDocument();
   });
 
-  it("restores the last primary section from local storage", () => {
+  it("restores the last primary section from local storage", async () => {
     localStorage.setItem("miniapp:last-section", "weight");
     renderApp("/");
-    expect(screen.getByText("Текущий вес")).toBeInTheDocument();
+    expect(await screen.findByText("Текущий вес")).toBeInTheDocument();
   });
 
   it("moves through bottom navigation and stores the selected section", () => {
@@ -82,6 +82,31 @@ describe("Mini App routes", () => {
     expect(screen.getByPlaceholderText("Найти ингредиент или блюдо")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ингредиенты" })).toBeInTheDocument();
     expect(telegram.bindBackButton).toHaveBeenCalledOnce();
+  });
+
+  it("opens the weight entry and goal forms", async () => {
+    renderApp("/weight");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Записать" }));
+    expect(screen.getByRole("dialog", { name: "Записать вес" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Вес, кг")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Задать" }));
+    expect(screen.getByRole("dialog", { name: "Задать цель" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Целевой вес, кг")).toBeInTheDocument();
+  });
+
+  it("validates a custom weight range of no more than one year", async () => {
+    renderApp("/weight");
+    fireEvent.change(await screen.findByRole("combobox", { name: "Период графика" }), {
+      target: { value: "custom" },
+    });
+    const [from, to] = screen.getAllByDisplayValue(/\d{4}-\d{2}-\d{2}/);
+    fireEvent.change(from, { target: { value: "2025-01-01" } });
+    fireEvent.change(to, { target: { value: "2026-09-10" } });
+    expect(screen.getByText("Период не может быть больше 365 дней")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Показать" })).toBeDisabled();
   });
 
   it("switches the preview theme from profile settings", () => {

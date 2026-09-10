@@ -6,7 +6,7 @@ from re import fullmatch
 from zoneinfo import ZoneInfo
 
 from app.db.models.weight import WeightEntry
-from app.exceptions import NotFoundError, ValidationError
+from app.exceptions import NotFoundError, StaleDataError, ValidationError
 from app.repositories.weights import WeightRepository
 
 WEIGHTS_PAGE_SIZE = 8
@@ -172,6 +172,47 @@ class WeightService:
             entry_id,
             {"measured_at": measured_at},
         )
+
+    async def update_entry(
+        self,
+        user_id: int,
+        entry_id: int,
+        *,
+        expected_updated_at: datetime,
+        weight_kg: Decimal | None = None,
+        measured_at: datetime | None = None,
+        note: str | None = None,
+        note_provided: bool = False,
+    ) -> WeightEntry:
+        entry = await self.get(user_id, entry_id)
+        if entry.updated_at != expected_updated_at:
+            raise StaleDataError(
+                "Запись уже изменена. Обновите историю и повторите действие."
+            )
+        values: dict[str, object] = {}
+        if weight_kg is not None:
+            validate_weight(weight_kg)
+            values["weight_kg"] = weight_kg
+        if measured_at is not None:
+            self._validate_measured_at(measured_at)
+            values["measured_at"] = measured_at
+        if note_provided:
+            values["note"] = note
+        if not values:
+            return entry
+        updated = await self._repository.update_if_current(
+            entry_id,
+            user_id,
+            expected_updated_at,
+            values,
+        )
+        if updated is None:
+            if await self._repository.get_by_id(entry_id, user_id) is None:
+                raise NotFoundError("Запись веса не найдена.")
+            raise StaleDataError(
+                "Запись уже изменена. Обновите историю и повторите действие."
+            )
+        return updated
 
     async def delete(self, user_id: int, entry_id: int) -> None:
         if not await self._repository.delete(entry_id, user_id):

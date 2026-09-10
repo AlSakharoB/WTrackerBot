@@ -1,3 +1,4 @@
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -34,6 +35,9 @@ class WeightChartRange:
 class WeightChartPoint:
     measured_at: datetime
     weight_kg: Decimal
+    entry_id: int | None = None
+    note: str | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +67,25 @@ class WeightChartData:
     @property
     def maximum_kg(self) -> Decimal | None:
         return max((point.weight_kg for point in self.points), default=None)
+
+    @property
+    def moving_average_7d(self) -> tuple[Decimal | None, ...]:
+        if not self.points:
+            return ()
+        window: deque[WeightChartPoint] = deque()
+        total = Decimal("0")
+        first_full_window = self.points[0].measured_at + timedelta(days=6)
+        averages: list[Decimal | None] = []
+        for point in self.points:
+            earliest = point.measured_at - timedelta(days=6)
+            while window and window[0].measured_at < earliest:
+                total -= window.popleft().weight_kg
+            window.append(point)
+            total += point.weight_kg
+            averages.append(
+                total / len(window) if point.measured_at >= first_full_window else None
+            )
+        return tuple(averages)
 
 
 def parse_chart_date(raw_value: str) -> date:
@@ -134,6 +157,9 @@ class WeightChartService:
             WeightChartPoint(
                 measured_at=entry.measured_at.astimezone(timezone),
                 weight_kg=entry.weight_kg,
+                entry_id=entry.id,
+                note=entry.note,
+                updated_at=entry.updated_at,
             )
             for entry in entries
         )

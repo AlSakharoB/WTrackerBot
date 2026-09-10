@@ -139,6 +139,26 @@ class WeightRepository:
         )
         return await self._session.scalar(statement)
 
+    async def update_if_current(
+        self,
+        entry_id: int,
+        user_id: int,
+        expected_updated_at: datetime,
+        values: dict[str, Any],
+    ) -> WeightEntry | None:
+        statement = (
+            update(WeightEntry)
+            .where(
+                WeightEntry.id == entry_id,
+                WeightEntry.user_id == user_id,
+                WeightEntry.updated_at == expected_updated_at,
+            )
+            .values(**values)
+            .returning(WeightEntry)
+            .execution_options(populate_existing=True)
+        )
+        return await self._session.scalar(statement)
+
     async def delete(self, entry_id: int, user_id: int) -> bool:
         statement = (
             delete(WeightEntry)

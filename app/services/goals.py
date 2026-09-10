@@ -65,6 +65,10 @@ def calculate_goal_progress(
     percentage = directed_progress / abs(total_delta) * ONE_HUNDRED
     percentage = min(max(percentage, ZERO), ONE_HUNDRED)
     completed = min(max(directed_progress, ZERO), abs(total_delta))
+    if percentage == ZERO:
+        percentage = ZERO
+    if completed == ZERO:
+        completed = ZERO
     achieved = (
         current_weight_kg >= target_weight_kg
         if direction > ZERO

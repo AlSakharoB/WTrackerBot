@@ -173,6 +173,69 @@ export interface RationDay extends RationSummary {
   meals: RationMeal[];
 }
 
+export interface WeightEntry {
+  id: string;
+  weight_kg: string;
+  measured_at: string;
+  note: string | null;
+  updated_at: string;
+}
+
+export interface WeightChartPoint extends WeightEntry {
+  moving_average_7d_kg: string | null;
+}
+
+export interface WeightGoalProgress {
+  percentage: string;
+  completed_kg: string;
+  remaining_kg: string;
+  achieved: boolean;
+}
+
+export interface WeightGoal {
+  id: string;
+  target_weight_kg: string;
+  start_weight_kg: string | null;
+  target_date: string | null;
+  current_weight_kg: string | null;
+  progress: WeightGoalProgress | null;
+  updated_at: string;
+}
+
+export interface WeightRange {
+  timezone: string;
+  date_from: string;
+  date_to: string;
+  current: WeightEntry | null;
+  previous: WeightEntry | null;
+  change_from_previous_kg: string | null;
+  period_change_kg: string | null;
+  minimum_kg: string | null;
+  maximum_kg: string | null;
+  goal: WeightGoal | null;
+  points: WeightChartPoint[];
+  history: WeightEntry[];
+}
+
+export interface WeightEntryCreate {
+  weight_kg: string;
+  measured_at: string;
+  note?: string | null;
+}
+
+export interface WeightEntryUpdate {
+  expected_updated_at: string;
+  weight_kg?: string;
+  measured_at?: string;
+  note?: string | null;
+}
+
+export interface WeightGoalUpdate {
+  enabled: boolean;
+  target_weight_kg?: string;
+  target_date?: string | null;
+}
+
 export type ThemeMode = "system" | "light" | "dark";
 export type DefaultSection = "ration" | "food" | "weight" | "profile";
 
@@ -484,4 +547,74 @@ export async function copyRationEntry(
     body: JSON.stringify(input),
   });
   return parseResponse(response, "Не удалось скопировать запись");
+}
+
+export async function fetchWeightRange(
+  initData: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<WeightRange> {
+  const params = new URLSearchParams({ from: dateFrom, to: dateTo });
+  const response = await fetch(`/api/v1/weight?${params}`, {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить историю веса");
+}
+
+export async function createWeightEntry(
+  initData: string,
+  input: WeightEntryCreate,
+  idempotencyKey: string,
+): Promise<WeightEntry> {
+  const response = await fetch("/api/v1/weight", {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось записать вес");
+}
+
+export async function updateWeightEntry(
+  initData: string,
+  id: string,
+  update: WeightEntryUpdate,
+): Promise<WeightEntry> {
+  const response = await fetch(`/api/v1/weight/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify(update),
+  });
+  return parseResponse(response, "Не удалось изменить измерение");
+}
+
+export async function deleteWeightEntry(
+  initData: string,
+  id: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/weight/${id}`, {
+    method: "DELETE",
+    headers: authorizationHeaders(initData),
+  });
+  if (!response.ok) {
+    await parseResponse<unknown>(response, "Не удалось удалить измерение");
+  }
+}
+
+export async function fetchWeightGoal(initData: string): Promise<WeightGoal | null> {
+  const response = await fetch("/api/v1/goals/weight", {
+    headers: authorizationHeaders(initData),
+  });
+  return parseResponse(response, "Не удалось загрузить цель веса");
+}
+
+export async function updateWeightGoal(
+  initData: string,
+  update: WeightGoalUpdate,
+): Promise<WeightGoal | null> {
+  const response = await fetch("/api/v1/goals/weight", {
+    method: "PUT",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify(update),
+  });
+  return parseResponse(response, "Не удалось сохранить цель веса");
 }

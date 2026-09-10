@@ -66,6 +66,16 @@ def test_custom_chart_range_rejects_reversed_dates() -> None:
         custom_chart_range(date(2026, 8, 2), date(2026, 8, 1))
 
 
+def test_seven_day_average_uses_trailing_calendar_window() -> None:
+    data = make_chart_data(8)
+
+    averages = data.moving_average_7d
+
+    assert averages[:6] == (None,) * 6
+    assert averages[6] == Decimal("83.7")
+    assert averages[7] == Decimal("83.6")
+
+
 def test_parse_chart_date_accepts_supported_formats() -> None:
     assert parse_chart_date("14.08.2026") == date(2026, 8, 14)
     assert parse_chart_date("2026-08-14") == date(2026, 8, 14)

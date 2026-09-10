@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import {
@@ -16,10 +16,13 @@ import { FoodPage } from "../pages/FoodPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { PrivacyPolicyPage } from "../pages/PrivacyPolicyPage";
 import { RationPage } from "../pages/RationPage";
-import { WeightPage } from "../pages/WeightPage";
 import type { TelegramAdapter } from "../telegram/adapter";
 import { useTelegramEnvironment } from "../telegram/hooks";
 import type { MiniAppContext } from "./context";
+
+const WeightPage = lazy(() =>
+  import("../pages/WeightPage").then((module) => ({ default: module.WeightPage })),
+);
 
 const DEFAULT_PREFERENCES: UIPreferences = {
   theme_mode: "system",
@@ -142,7 +145,10 @@ export function App({ telegram }: AppProps) {
           <Route path="/ration/add" element={<RationPage />} />
           <Route path="/food" element={<FoodPage />} />
           <Route path="/food/new" element={<FoodPage />} />
-          <Route path="/weight" element={<WeightPage />} />
+          <Route
+            path="/weight"
+            element={<Suspense fallback={<div className="page"><Skeleton lines={7} /></div>}><WeightPage /></Suspense>}
+          />
           <Route path="/profile" element={<ProfilePage />} />
           <Route
             path="*"
