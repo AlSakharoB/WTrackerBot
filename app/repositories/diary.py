@@ -1,4 +1,5 @@
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -7,6 +8,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.diary import DiaryEntry, DiaryEntryType, MealType
+
+
+@dataclass(frozen=True, slots=True)
+class DiarySourceUsage:
+    count: int
+    last_used_at: datetime
 
 
 class DiaryRepository:
@@ -134,6 +141,60 @@ class DiaryRepository:
             .execution_options(populate_existing=True)
         )
         return await self._session.scalar(statement)
+
+    async def update_if_current(
+        self,
+        entry_id: int,
+        user_id: int,
+        expected_updated_at: datetime,
+        values: dict[str, Any],
+    ) -> DiaryEntry | None:
+        statement = (
+            update(DiaryEntry)
+            .where(
+                DiaryEntry.id == entry_id,
+                DiaryEntry.user_id == user_id,
+                DiaryEntry.updated_at == expected_updated_at,
+            )
+            .values(**values)
+            .returning(DiaryEntry)
+            .execution_options(populate_existing=True)
+        )
+        return await self._session.scalar(statement)
+
+    async def source_usage(
+        self,
+        user_id: int,
+    ) -> dict[tuple[DiaryEntryType, int], DiarySourceUsage]:
+        source_id = case(
+            (
+                DiaryEntry.entry_type == DiaryEntryType.INGREDIENT,
+                DiaryEntry.ingredient_id,
+            ),
+            else_=DiaryEntry.dish_id,
+        )
+        statement = (
+            select(
+                DiaryEntry.entry_type,
+                source_id.label("source_id"),
+                func.count(DiaryEntry.id),
+                func.max(DiaryEntry.created_at),
+            )
+            .where(
+                DiaryEntry.user_id == user_id,
+                source_id.is_not(None),
+            )
+            .group_by(DiaryEntry.entry_type, source_id)
+        )
+        return {
+            (entry_type, int(source)): DiarySourceUsage(
+                count=int(count),
+                last_used_at=last_used_at,
+            )
+            for entry_type, source, count, last_used_at in (
+                await self._session.execute(statement)
+            ).all()
+        }
 
     async def delete(self, entry_id: int, user_id: int) -> bool:
         statement = (

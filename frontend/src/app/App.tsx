@@ -139,6 +139,7 @@ export function App({ telegram }: AppProps) {
         />
         <Route element={<AppShell telegram={telegram} context={context} />}>
           <Route path="/ration" element={<RationPage />} />
+          <Route path="/ration/add" element={<RationPage />} />
           <Route path="/food" element={<FoodPage />} />
           <Route path="/food/new" element={<FoodPage />} />
           <Route path="/weight" element={<WeightPage />} />

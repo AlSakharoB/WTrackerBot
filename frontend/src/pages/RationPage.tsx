@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Apple,
   CalendarPlus,
@@ -13,7 +13,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { useState, type CSSProperties, type ElementType } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   fetchRationDay,
@@ -26,8 +26,9 @@ import {
   type RationNutrition,
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
+import { RationAddSheet } from "../components/ration/RationAddSheet";
+import { RationEntrySheet } from "../components/ration/RationEntrySheet";
 import {
-  BottomSheet,
   DateSwitcher,
   ErrorState,
   ProgressBar,
@@ -178,7 +179,7 @@ function MealSection({
   onSelectEntry: (entry: RationEntry) => void;
 }) {
   const Icon = MEAL_ICONS[meal.type];
-  const addTarget = `/food/new?date=${date}&meal=${meal.type}`;
+  const addTarget = `/ration/add?date=${date}&meal=${meal.type}`;
   return (
     <article className="meal-section">
       <header>
@@ -226,11 +227,20 @@ function GoalOverview({ goal, day }: { goal: RationGoal; day: RationDay }) {
 
 export function RationPage() {
   const { user, initData } = useMiniAppContext();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const timezone = user?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const today = todayInTimezone(timezone);
-  const [date, setDate] = useState(today);
+  const requestedDate = searchParams.get("date");
+  const initialDate = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : today;
+  const [date, setDate] = useState(initialDate);
   const [selectedEntry, setSelectedEntry] = useState<RationEntry | null>(null);
   const authorized = initData.length > 0;
+  const addOpen = location.pathname === "/ration/add";
+  const requestedMeal = searchParams.get("meal") as MealType | null;
+  const initialMeal = MEALS.some((item) => item.type === requestedMeal) ? requestedMeal! : "other";
   const rationQuery = useQuery({
     queryKey: ["ration", date],
     queryFn: () => fetchRationDay(initData, date),
@@ -255,7 +265,15 @@ export function RationPage() {
   const energyGoal = numeric(day.goal?.energy_kcal ?? null);
   const energyCurrent = numeric(day.totals.energy_kcal);
   const energyDifference = energyGoal - energyCurrent;
-  const addTarget = `/food/new?date=${date}`;
+  const addTarget = `/ration/add?date=${date}`;
+  const closeAdd = () => navigate(`/ration?date=${date}`, { replace: true });
+  const refreshRation = (affectedDate?: string) => {
+    setSelectedEntry(null);
+    void queryClient.invalidateQueries({ queryKey: ["ration", date] });
+    if (affectedDate && affectedDate !== date) {
+      void queryClient.invalidateQueries({ queryKey: ["ration", affectedDate] });
+    }
+  };
 
   return (
     <div className="page page--ration">
@@ -292,15 +310,29 @@ export function RationPage() {
         <Link className="button-primary button-with-icon ration-add-button" to={addTarget}><CalendarPlus aria-hidden="true" size={18} />Добавить еду</Link>
       </section>
 
-      <BottomSheet open={selectedEntry !== null} title="Запись рациона" onClose={() => setSelectedEntry(null)}>
-        {selectedEntry && (
-          <div className="entry-details">
-            <div className="entry-details__heading"><span>{selectedEntry.type === "dish" ? <CookingPot aria-hidden="true" /> : <Salad aria-hidden="true" />}</span><div><h3>{selectedEntry.source_name}</h3><p>{formatValue(selectedEntry.grams, day.number_format)} г · {selectedEntry.type === "dish" ? "Блюдо" : "Ингредиент"}</p></div></div>
-            {!selectedEntry.source_available && <p className="source-warning">Исходный продукт удалён. Сохранённые значения записи не изменились.</p>}
-            <div className="entry-nutrition"><div><span>Калории</span><strong>{formatValue(selectedEntry.nutrition.energy_kcal, day.number_format)} ккал</strong></div><div><span>Белки</span><strong>{formatValue(selectedEntry.nutrition.protein_g, day.number_format)} г</strong></div><div><span>Жиры</span><strong>{formatValue(selectedEntry.nutrition.fat_g, day.number_format)} г</strong></div><div><span>Углеводы</span><strong>{formatValue(selectedEntry.nutrition.carbs_g, day.number_format)} г</strong></div></div>
-          </div>
-        )}
-      </BottomSheet>
+      <RationAddSheet
+        key={`${addOpen}-${date}-${initialMeal}`}
+        open={addOpen}
+        date={date}
+        initialMeal={initialMeal}
+        format={day.number_format}
+        initData={initData}
+        authorized={authorized}
+        formatValue={formatValue}
+        onClose={closeAdd}
+        onSaved={() => { refreshRation(); closeAdd(); }}
+      />
+      <RationEntrySheet
+        key={`${selectedEntry?.id ?? "none"}-${date}`}
+        entry={selectedEntry}
+        currentDate={date}
+        format={day.number_format}
+        initData={initData}
+        authorized={authorized}
+        formatValue={formatValue}
+        onClose={() => setSelectedEntry(null)}
+        onChanged={refreshRation}
+      />
     </div>
   );
 }

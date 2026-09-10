@@ -9,9 +9,9 @@ from app.bot.keyboards.diary import (
     DiaryEntryCallback,
     build_entry_list_keyboard,
 )
-from app.db.models.diary import DiaryEntry
+from app.db.models.diary import DiaryEntry, MealType
 from app.db.models.user import User
-from app.exceptions import ValidationError
+from app.exceptions import StaleDataError, ValidationError
 from app.services.diary import (
     DIARY_ENTRIES_PAGE_SIZE,
     DiaryEntryPage,
@@ -112,11 +112,13 @@ def test_visible_macro_percentages_stay_zero_without_macros() -> None:
 
 def test_entry_parsers_accept_supported_formats() -> None:
     assert parse_entry_grams(" 125,5 ") == Decimal("125.5")
+    assert parse_entry_grams("0.01") == Decimal("0.01")
+    assert parse_entry_grams("1000000") == Decimal("1000000")
     assert parse_entry_date("11.08.2026").isoformat() == "2026-08-11"
     assert parse_entry_date("2026-08-12").isoformat() == "2026-08-12"
 
 
-@pytest.mark.parametrize("value", ["0", "-1", "abc", "1e3", "1000001"])
+@pytest.mark.parametrize("value", ["0", "0.001", "-1", "abc", "1e3", "1000001"])
 def test_entry_grams_reject_invalid_values(value: str) -> None:
     with pytest.raises(ValidationError):
         parse_entry_grams(value)
@@ -146,6 +148,33 @@ async def test_diary_entry_page_is_clamped_and_uses_eight_items() -> None:
         limit=DIARY_ENTRIES_PAGE_SIZE,
         offset=DIARY_ENTRIES_PAGE_SIZE,
     )
+
+
+async def test_entry_update_rejects_concurrent_change() -> None:
+    expected_updated_at = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    entry = DiaryEntry(
+        id=7,
+        user_id=10,
+        entry_date=datetime(2026, 9, 10, tzinfo=UTC).date(),
+        source_name="Яблоко",
+        grams=Decimal("100"),
+        meal_type=MealType.BREAKFAST,
+        updated_at=expected_updated_at,
+    )
+    repository = Mock()
+    repository.get_by_id = AsyncMock(return_value=entry)
+    repository.update_if_current = AsyncMock(return_value=None)
+    service = DiaryService(repository, Mock(), Mock(), Mock())
+
+    with pytest.raises(StaleDataError):
+        await service.update_entry(
+            10,
+            7,
+            expected_updated_at=expected_updated_at,
+            meal_type=MealType.LUNCH,
+        )
+
+    repository.update_if_current.assert_awaited_once()
 
 
 def test_diary_entry_keyboard_paginates_and_callbacks_fit_limit() -> None:

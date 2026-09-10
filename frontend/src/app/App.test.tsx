@@ -74,6 +74,16 @@ describe("Mini App routes", () => {
     expect(telegram.bindBackButton).toHaveBeenCalledOnce();
   });
 
+  it("opens the ration source picker as a nested route", () => {
+    const telegram = createPreviewAdapter();
+    renderApp("/ration/add?date=2026-09-10&meal=breakfast", telegram);
+
+    expect(screen.getByRole("dialog", { name: "Добавить в рацион" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Найти ингредиент или блюдо")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ингредиенты" })).toBeInTheDocument();
+    expect(telegram.bindBackButton).toHaveBeenCalledOnce();
+  });
+
   it("switches the preview theme from profile settings", () => {
     renderApp("/profile");
     fireEvent.click(screen.getByRole("button", { name: "Темная" }));

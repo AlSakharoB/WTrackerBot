@@ -274,6 +274,34 @@ class DishRepository:
         )
         return list((await self._session.scalars(statement)).all())
 
+    async def search_records(
+        self,
+        user_id: int,
+        *,
+        query: str | None,
+        limit: int,
+    ) -> list[DishRecord]:
+        statement = select(Dish).where(Dish.user_id == user_id)
+        if query:
+            statement = statement.where(
+                Dish.name_normalized.contains(query, autoescape=True)
+            )
+        dishes = list(
+            (
+                await self._session.scalars(
+                    statement.order_by(Dish.name_normalized, Dish.id).limit(limit)
+                )
+            ).all()
+        )
+        by_id = {
+            record.dish.id: record
+            for record in await self.get_by_ids(
+                {dish.id for dish in dishes},
+                user_id,
+            )
+        }
+        return [by_id[dish.id] for dish in dishes if dish.id in by_id]
+
     async def delete(self, dish_id: int, user_id: int) -> bool:
         statement = (
             delete(Dish)

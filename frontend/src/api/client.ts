@@ -116,6 +116,38 @@ export interface RationEntry {
   meal_type: MealType;
   nutrition: RationNutrition;
   created_at: string;
+  updated_at: string;
+}
+
+export type RationSourceKind = "all" | "ingredient" | "dish";
+
+export interface RationSource {
+  id: string;
+  type: "ingredient" | "dish";
+  name: string;
+  default_grams: string;
+  nutrition_per_100g: RationNutrition;
+  usage_count: number;
+  last_used_at: string | null;
+}
+
+export interface RationEntryCreate {
+  source_type: "ingredient" | "dish";
+  source_id: string;
+  grams: string;
+  meal_type: MealType;
+}
+
+export interface RationEntryUpdate {
+  expected_updated_at: string;
+  grams?: string;
+  meal_type?: MealType;
+  entry_date?: string;
+}
+
+export interface RationEntryCopy {
+  entry_date: string;
+  meal_type?: MealType;
 }
 
 export interface RationMeal {
@@ -381,4 +413,75 @@ export async function fetchRationSummary(
     headers: authorizationHeaders(initData),
   });
   return parseResponse(response, "Не удалось загрузить итоги рациона");
+}
+
+export async function fetchRationSources(
+  initData: string,
+  query: string,
+  kind: RationSourceKind,
+): Promise<RationSource[]> {
+  const params = new URLSearchParams({ kind, limit: "30" });
+  if (query.trim()) params.set("q", query.trim());
+  const response = await fetch(`/api/v1/ration/sources?${params}`, {
+    headers: authorizationHeaders(initData),
+  });
+  const payload = await parseResponse<{ items: RationSource[] }>(
+    response,
+    "Не удалось загрузить продукты",
+  );
+  return payload.items;
+}
+
+export async function createRationEntry(
+  initData: string,
+  date: string,
+  input: RationEntryCreate,
+  idempotencyKey: string,
+): Promise<RationEntry> {
+  const response = await fetch(`/api/v1/ration/${date}/entries`, {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось добавить запись");
+}
+
+export async function updateRationEntry(
+  initData: string,
+  id: string,
+  update: RationEntryUpdate,
+): Promise<RationEntry> {
+  const response = await fetch(`/api/v1/ration/entries/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders(initData),
+    body: JSON.stringify(update),
+  });
+  return parseResponse(response, "Не удалось изменить запись");
+}
+
+export async function deleteRationEntry(
+  initData: string,
+  id: string,
+): Promise<void> {
+  const response = await fetch(`/api/v1/ration/entries/${id}`, {
+    method: "DELETE",
+    headers: authorizationHeaders(initData),
+  });
+  if (!response.ok) {
+    await parseResponse<unknown>(response, "Не удалось удалить запись");
+  }
+}
+
+export async function copyRationEntry(
+  initData: string,
+  id: string,
+  input: RationEntryCopy,
+  idempotencyKey: string,
+): Promise<RationEntry> {
+  const response = await fetch(`/api/v1/ration/entries/${id}/copy`, {
+    method: "POST",
+    headers: jsonHeaders(initData, idempotencyKey),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response, "Не удалось скопировать запись");
 }

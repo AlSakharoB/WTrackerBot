@@ -6,7 +6,7 @@ from re import fullmatch
 
 from app.db.models.diary import DiaryEntry, DiaryEntryType, MealType
 from app.db.models.nutrition_goal import NutritionGoal
-from app.exceptions import NotFoundError, ValidationError
+from app.exceptions import NotFoundError, StaleDataError, ValidationError
 from app.repositories.diary import DiaryRepository
 from app.repositories.dishes import DishRecord, DishRepository
 from app.repositories.ingredients import IngredientRepository
@@ -19,6 +19,7 @@ from app.services.nutrition import (
 )
 
 MAX_ENTRY_GRAMS = Decimal("1000000")
+MIN_ENTRY_GRAMS = Decimal("0.01")
 DIARY_ENTRIES_PAGE_SIZE = 8
 
 
@@ -54,7 +55,7 @@ def parse_entry_grams(raw_value: str) -> Decimal:
         grams = Decimal(normalized)
     except InvalidOperation as error:
         raise ValidationError("Введите количество граммов больше 0.") from error
-    if not grams.is_finite() or grams <= 0 or grams > MAX_ENTRY_GRAMS:
+    if not grams.is_finite() or grams < MIN_ENTRY_GRAMS or grams > MAX_ENTRY_GRAMS:
         raise ValidationError("Введите количество граммов больше 0.")
     return grams
 
@@ -223,8 +224,86 @@ class DiaryService:
         entry_id: int,
         grams: Decimal,
     ) -> DiaryEntry:
-        parse_entry_grams(str(grams))
         entry = await self.get(user_id, entry_id)
+        values = await self._grams_update_values(user_id, entry, grams)
+        updated = await self._repository.update(
+            entry_id,
+            user_id,
+            values,
+        )
+        if updated is None:
+            raise NotFoundError("Запись рациона не найдена.")
+        return updated
+
+    async def update_entry(
+        self,
+        user_id: int,
+        entry_id: int,
+        *,
+        expected_updated_at: datetime,
+        grams: Decimal | None = None,
+        meal_type: MealType | None = None,
+        entry_date: date | None = None,
+    ) -> DiaryEntry:
+        entry = await self.get(user_id, entry_id)
+        if entry.updated_at != expected_updated_at:
+            raise StaleDataError(
+                "Запись уже изменена. Обновите рацион и повторите действие."
+            )
+        values: dict[str, object] = {}
+        if grams is not None and grams != entry.grams:
+            values.update(await self._grams_update_values(user_id, entry, grams))
+        if meal_type is not None:
+            values["meal_type"] = meal_type
+        if entry_date is not None:
+            values["entry_date"] = entry_date
+        if not values:
+            return entry
+        updated = await self._repository.update_if_current(
+            entry_id,
+            user_id,
+            expected_updated_at,
+            values,
+        )
+        if updated is None:
+            if await self._repository.get_by_id(entry_id, user_id) is None:
+                raise NotFoundError("Запись рациона не найдена.")
+            raise StaleDataError(
+                "Запись уже изменена. Обновите рацион и повторите действие."
+            )
+        return updated
+
+    async def copy_entry(
+        self,
+        user_id: int,
+        entry_id: int,
+        *,
+        entry_date: date,
+        meal_type: MealType | None = None,
+    ) -> DiaryEntry:
+        entry = await self.get(user_id, entry_id)
+        return await self._repository.create(
+            user_id=user_id,
+            entry_date=entry_date,
+            entry_type=entry.entry_type,
+            ingredient_id=entry.ingredient_id,
+            dish_id=entry.dish_id,
+            source_name=entry.source_name,
+            grams=entry.grams,
+            meal_type=meal_type or entry.meal_type,
+            kcal_snapshot=entry.kcal_snapshot,
+            protein_snapshot=entry.protein_snapshot,
+            fat_snapshot=entry.fat_snapshot,
+            carbs_snapshot=entry.carbs_snapshot,
+        )
+
+    async def _grams_update_values(
+        self,
+        user_id: int,
+        entry: DiaryEntry,
+        grams: Decimal,
+    ) -> dict[str, object]:
+        parse_entry_grams(str(grams))
         if entry.entry_type is DiaryEntryType.INGREDIENT:
             if entry.ingredient_id is None:
                 raise ValidationError(
@@ -255,18 +334,11 @@ class DiaryService:
             name = record.dish.name
             nutrition = self._calculate_dish_portion(record, grams)
 
-        updated = await self._repository.update(
-            entry_id,
-            user_id,
-            {
-                "grams": grams,
-                "source_name": name,
-                **self._snapshot_values(nutrition),
-            },
-        )
-        if updated is None:
-            raise NotFoundError("Запись рациона не найдена.")
-        return updated
+        return {
+            "grams": grams,
+            "source_name": name,
+            **self._snapshot_values(nutrition),
+        }
 
     async def update_meal(
         self,

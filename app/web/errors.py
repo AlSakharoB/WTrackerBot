@@ -11,6 +11,7 @@ from app.exceptions import (
     IdempotencyConflictError,
     NotFoundError,
     PermissionDeniedError,
+    StaleDataError,
     ValidationError,
 )
 
@@ -80,6 +81,16 @@ def register_error_handlers(app: FastAPI) -> None:
             error_body(request, error.code, error.message),
             status_code=error.status_code,
             headers=error.headers,
+        )
+
+    @app.exception_handler(StaleDataError)
+    async def handle_stale_data(
+        request: Request,
+        error: StaleDataError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            error_body(request, "stale_data", str(error)),
+            status_code=409,
         )
 
     @app.exception_handler(ValidationError)

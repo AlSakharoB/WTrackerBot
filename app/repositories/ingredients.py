@@ -177,6 +177,24 @@ class IngredientRepository:
         )
         return list((await self._session.scalars(statement)).all())
 
+    async def search(
+        self,
+        user_id: int,
+        *,
+        query: str | None,
+        limit: int,
+    ) -> list[Ingredient]:
+        statement = select(Ingredient).where(Ingredient.user_id == user_id)
+        if query:
+            statement = statement.where(
+                Ingredient.name_normalized.contains(query, autoescape=True)
+            )
+        statement = statement.order_by(
+            Ingredient.name_normalized,
+            Ingredient.id,
+        ).limit(limit)
+        return list((await self._session.scalars(statement)).all())
+
     async def update(
         self,
         ingredient_id: int,
