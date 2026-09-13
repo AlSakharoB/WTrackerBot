@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Apple,
-  CalendarPlus,
   CookingPot,
   EllipsisVertical,
+  Flame,
   Goal,
   MoonStar,
   Plus,
@@ -21,9 +21,9 @@ import {
   type NumberFormat,
   type RationDay,
   type RationEntry,
-  type RationGoal,
   type RationMeal,
   type RationNutrition,
+  type RationSource,
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
 import { RationAddSheet } from "../components/ration/RationAddSheet";
@@ -32,7 +32,6 @@ import {
   DateSwitcher,
   ErrorState,
   ProgressBar,
-  Skeleton,
 } from "../components/ui";
 
 const ZERO_NUTRITION: RationNutrition = {
@@ -107,39 +106,11 @@ function percentage(current: string, target: string | null): number {
   return targetValue > 0 ? numeric(current) / targetValue * 100 : 0;
 }
 
-interface GoalRowProps {
-  label: string;
-  current: string;
-  target: string | null;
-  unit: string;
-  tone: "energy" | "protein" | "fat" | "carbs";
-  format: NumberFormat;
-}
-
-function GoalRow({ label, current, target, unit, tone, format }: GoalRowProps) {
-  if (target === null) return null;
-  const progress = percentage(current, target);
-  const excess = numeric(current) - numeric(target);
-  return (
-    <div className="goal-progress-row">
-      <div>
-        <strong>{label}</strong>
-        <span>{formatValue(current, format)} / {formatValue(target, format)} {unit}</span>
-        <b className={excess > 0 ? "is-excess" : ""}>
-          {Math.round(progress)}%
-          {excess > 0 && ` · +${formatValue(excess, format)} ${unit}`}
-        </b>
-      </div>
-      <ProgressBar label={`Выполнение цели: ${label}`} value={progress} tone={tone} />
-    </div>
-  );
-}
-
 function MacroOverview({ day }: { day: RationDay }) {
   const { totals, macro_percentages: macros, number_format: format } = day;
   const hasMacros = macros.protein + macros.fat + macros.carbs > 0;
-  const proteinEnd = macros.protein;
-  const fatEnd = proteinEnd + macros.fat;
+  const proteinEnd = Math.min(100, Math.max(0, macros.protein));
+  const fatEnd = Math.min(100, Math.max(proteinEnd, proteinEnd + macros.fat));
   const chartStyle: CSSProperties = hasMacros
     ? {
         background: `conic-gradient(var(--color-macro-protein) 0 ${proteinEnd}%, var(--color-macro-fat) ${proteinEnd}% ${fatEnd}%, var(--color-macro-carbs) ${fatEnd}% 100%)`,
@@ -155,15 +126,73 @@ function MacroOverview({ day }: { day: RationDay }) {
       >
         <div>
           <strong>{formatValue(totals.energy_kcal, format)}</strong>
-          <span>ккал</span>
+          <span>{day.goal?.energy_kcal ? `из ${formatValue(day.goal.energy_kcal, format)} ккал` : "ккал"}</span>
+          {!hasMacros && <small>Нет данных БЖУ</small>}
         </div>
       </div>
       <div className="macro-legend">
-        <div className="macro-legend__protein"><span>Белки</span><strong>{formatValue(totals.protein_g, format)} г</strong><b>{macros.protein}%</b></div>
-        <div className="macro-legend__fat"><span>Жиры</span><strong>{formatValue(totals.fat_g, format)} г</strong><b>{macros.fat}%</b></div>
-        <div className="macro-legend__carbs"><span>Углеводы</span><strong>{formatValue(totals.carbs_g, format)} г</strong><b>{macros.carbs}%</b></div>
+        <div className="macro-legend__protein"><i aria-hidden="true" /><span>Белки <small>{macros.protein}%</small></span><strong>{formatValue(totals.protein_g, format)} г <small>{day.goal?.protein_g ? `/ ${formatValue(day.goal.protein_g, format)} г` : "· цель не задана"}</small></strong></div>
+        <div className="macro-legend__fat"><i aria-hidden="true" /><span>Жиры <small>{macros.fat}%</small></span><strong>{formatValue(totals.fat_g, format)} г <small>{day.goal?.fat_g ? `/ ${formatValue(day.goal.fat_g, format)} г` : "· цель не задана"}</small></strong></div>
+        <div className="macro-legend__carbs"><i aria-hidden="true" /><span>Углеводы <small>{macros.carbs}%</small></span><strong>{formatValue(totals.carbs_g, format)} г <small>{day.goal?.carbs_g ? `/ ${formatValue(day.goal.carbs_g, format)} г` : "· цель не задана"}</small></strong></div>
       </div>
     </div>
+  );
+}
+
+function DayBalance({ day }: { day: RationDay }) {
+  const energyGoal = day.goal?.energy_kcal ?? null;
+  const hasEnergyGoal = energyGoal !== null && numeric(energyGoal) > 0;
+  const difference = hasEnergyGoal
+    ? numeric(energyGoal) - numeric(day.totals.energy_kcal)
+    : null;
+  const progress = hasEnergyGoal
+    ? percentage(day.totals.energy_kcal, energyGoal)
+    : 0;
+  const isExcess = difference !== null && difference < 0;
+  const statusLabel = difference === null
+    ? "Цели не заданы"
+    : isExcess
+      ? "Цель превышена"
+      : difference === 0
+        ? "Цель выполнена"
+        : "Осталось";
+
+  return (
+    <section className="ration-balance" aria-labelledby="daily-summary-title">
+      <div className="ration-balance__heading">
+        <div>
+          <span>Итог дня</span>
+          <h1 id="daily-summary-title">Баланс КБЖУ</h1>
+          <small>{day.entry_count} записей · {day.timezone}</small>
+        </div>
+        <div className="ration-balance__status-group">
+          {day.is_future && <span className="future-badge">Будущий день</span>}
+          <div className={`ration-balance__status ${isExcess ? "is-excess" : ""}`}>
+            {isExcess ? <Flame aria-hidden="true" /> : <Goal aria-hidden="true" />}
+            <span>
+              {statusLabel}
+              {difference !== null && (
+                <strong>{isExcess ? "+" : ""}{formatValue(Math.abs(difference), day.number_format)} ккал</strong>
+              )}
+            </span>
+          </div>
+        </div>
+      </div>
+      <MacroOverview day={day} />
+      {hasEnergyGoal ? (
+        <div className="ration-energy-progress">
+          <span>Калории</span>
+          <ProgressBar label="Выполнение цели по калориям" value={progress} />
+          <strong>{formatValue(day.totals.energy_kcal, day.number_format)} / {formatValue(energyGoal, day.number_format)} <small>ккал</small></strong>
+          <b className={isExcess ? "is-excess" : ""}>{Math.round(progress)}%</b>
+        </div>
+      ) : (
+        <div className="ration-goal-missing">
+          <span>Добавьте цели, чтобы сравнивать дневной рацион.</span>
+          <Link to="/profile">Настроить</Link>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -191,20 +220,22 @@ function MealSection({
         <Link className="icon-link" to={addTarget} aria-label={`Добавить в ${meal.label.toLowerCase()}`} title="Добавить запись"><Plus aria-hidden="true" /></Link>
       </header>
       {meal.entries.length === 0 ? (
-        <div className="meal-empty">
-          <span>Нет записей</span>
-          <Link to={addTarget}>Добавить</Link>
-        </div>
+        <Link className="meal-empty" to={addTarget}>
+          <span>Пока ничего не добавлено</span>
+          <strong>Добавить еду</strong>
+        </Link>
       ) : (
         <div className="meal-entries">
           {meal.entries.map((entry) => (
             <div className="meal-entry" key={entry.id}>
-              <span className="meal-entry__type">{entry.type === "dish" ? <CookingPot aria-hidden="true" /> : <Salad aria-hidden="true" />}</span>
-              <div>
-                <strong>{entry.source_name}</strong>
-                <span>{formatValue(entry.grams, format)} г{!entry.source_available && " · источник удалён"}</span>
-              </div>
-              <span className="meal-entry__energy">{formatValue(entry.nutrition.energy_kcal, format)} ккал</span>
+              <button type="button" className="meal-entry__main" aria-label={`Открыть запись ${entry.source_name}`} onClick={() => onSelectEntry(entry)}>
+                <span className="meal-entry__type">{entry.type === "dish" ? <CookingPot aria-hidden="true" /> : <Salad aria-hidden="true" />}</span>
+                <span className="meal-entry__copy">
+                  <strong>{entry.source_name}</strong>
+                  <small>{formatValue(entry.grams, format)} г{!entry.source_available && " · Источник удалён"}</small>
+                </span>
+                <span className="meal-entry__energy">{formatValue(entry.nutrition.energy_kcal, format)} <small>ккал</small></span>
+              </button>
               <button type="button" className="icon-button icon-button--small" aria-label={`Открыть запись ${entry.source_name}`} onClick={() => onSelectEntry(entry)}><EllipsisVertical aria-hidden="true" /></button>
             </div>
           ))}
@@ -214,13 +245,17 @@ function MealSection({
   );
 }
 
-function GoalOverview({ goal, day }: { goal: RationGoal; day: RationDay }) {
+function RationPageSkeleton({ date, today, onChange }: { date: string; today: string; onChange: (value: string) => void }) {
   return (
-    <div className="goals-progress">
-      <GoalRow label="Калории" current={day.totals.energy_kcal} target={goal.energy_kcal} unit="ккал" tone="energy" format={day.number_format} />
-      <GoalRow label="Белки" current={day.totals.protein_g} target={goal.protein_g} unit="г" tone="protein" format={day.number_format} />
-      <GoalRow label="Жиры" current={day.totals.fat_g} target={goal.fat_g} unit="г" tone="fat" format={day.number_format} />
-      <GoalRow label="Углеводы" current={day.totals.carbs_g} target={goal.carbs_g} unit="г" tone="carbs" format={day.number_format} />
+    <div className="page page--ration">
+      <DateSwitcher value={date} today={today} isFuture={date > today} onChange={onChange} />
+      <section className="ration-balance ration-page-skeleton" aria-busy="true" aria-label="Загрузка рациона">
+        <span className="sr-only">Загрузка рациона</span>
+        <i /><i /><i /><i />
+      </section>
+      <section className="ration-meals ration-meals-skeleton" aria-hidden="true">
+        <i /><i /><i />
+      </section>
     </div>
   );
 }
@@ -241,6 +276,8 @@ export function RationPage() {
   const addOpen = location.pathname === "/ration/add";
   const requestedMeal = searchParams.get("meal") as MealType | null;
   const initialMeal = MEALS.some((item) => item.type === requestedMeal) ? requestedMeal! : "other";
+  const locationState = location.state as { createdRationSource?: RationSource } | null;
+  const initialSource = locationState?.createdRationSource ?? null;
   const rationQuery = useQuery({
     queryKey: ["ration", date],
     queryFn: () => fetchRationDay(initData, date),
@@ -250,7 +287,7 @@ export function RationPage() {
   const day = authorized ? rationQuery.data : emptyDay(date, today, timezone);
 
   if (authorized && rationQuery.isPending) {
-    return <div className="page"><Skeleton lines={7} /></div>;
+    return <RationPageSkeleton date={date} today={today} onChange={setDate} />;
   }
   if (authorized && rationQuery.error) {
     return (
@@ -262,9 +299,6 @@ export function RationPage() {
   }
   if (!day) return null;
 
-  const energyGoal = numeric(day.goal?.energy_kcal ?? null);
-  const energyCurrent = numeric(day.totals.energy_kcal);
-  const energyDifference = energyGoal - energyCurrent;
   const addTarget = `/ration/add?date=${date}`;
   const closeAdd = () => navigate(`/ration?date=${date}`, { replace: true });
   const refreshRation = (affectedDate?: string) => {
@@ -274,47 +308,34 @@ export function RationPage() {
       void queryClient.invalidateQueries({ queryKey: ["ration", affectedDate] });
     }
   };
+  const refreshSelectedEntry = async (entryId: string) => {
+    const refreshed = await rationQuery.refetch();
+    const freshEntry = refreshed.data?.meals
+      .flatMap((meal) => meal.entries)
+      .find((entry) => entry.id === entryId) ?? null;
+    setSelectedEntry(freshEntry);
+  };
+  const visibleMeals = day.meals.filter((meal) => meal.type !== "other" || meal.entries.length > 0);
 
   return (
     <div className="page page--ration">
       <DateSwitcher value={date} today={today} isFuture={day.is_future} onChange={setDate} />
 
-      <section className="section-block ration-summary" aria-labelledby="daily-summary-title">
-        <div className="section-heading">
-          <div><h1 id="daily-summary-title">Итоги дня</h1><p>{day.entry_count} записей · {day.timezone}</p></div>
-          {day.is_future && <span className="future-badge">Будущий день</span>}
-        </div>
-        <div className="energy-summary">
-          <div><span>Съедено</span><strong>{formatValue(day.totals.energy_kcal, day.number_format)}</strong><small>ккал</small></div>
-          <div className="energy-summary__detail">
-            {energyGoal > 0 ? (
-              <><span>Цель {formatValue(energyGoal, day.number_format)} ккал</span><strong className={energyDifference < 0 ? "is-excess" : ""}>{energyDifference >= 0 ? "Осталось" : "Превышение"} {formatValue(Math.abs(energyDifference), day.number_format)} ккал</strong><ProgressBar label="Выполнение цели по калориям" value={percentage(day.totals.energy_kcal, day.goal?.energy_kcal ?? null)} /></>
-            ) : (
-              <><span>Дневная цель не задана</span><Link to="/profile">Настроить цели</Link></>
-            )}
-          </div>
-        </div>
-        <MacroOverview day={day} />
-      </section>
+      <DayBalance day={day} />
 
-      <section className="section-block ration-goals" aria-labelledby="ration-goals-title">
-        <div className="section-heading"><div><h2 id="ration-goals-title">Дневные цели</h2><p>Выполнение калорий и БЖУ</p></div><Goal aria-hidden="true" /></div>
-        {day.goal ? <GoalOverview goal={day.goal} day={day} /> : <div className="inline-empty"><span>Цели на этот день не заданы</span><Link to="/profile">Настроить</Link></div>}
-      </section>
-
-      <section className="section-block ration-meals" aria-labelledby="meals-title">
+      <section className="ration-meals" aria-labelledby="meals-title">
         <div className="section-heading"><div><h2 id="meals-title">Приёмы пищи</h2><p>{day.entry_count === 0 ? "Рацион пока пуст" : `Всего записей: ${day.entry_count}`}</p></div><Link className="button-primary button-with-icon" to={addTarget}><Plus aria-hidden="true" size={18} />Добавить</Link></div>
         <div className="meals-list">
-          {day.meals.map((meal) => <MealSection key={meal.type} meal={meal} date={date} format={day.number_format} onSelectEntry={setSelectedEntry} />)}
+          {visibleMeals.map((meal) => <MealSection key={meal.type} meal={meal} date={date} format={day.number_format} onSelectEntry={setSelectedEntry} />)}
         </div>
-        <Link className="button-primary button-with-icon ration-add-button" to={addTarget}><CalendarPlus aria-hidden="true" size={18} />Добавить еду</Link>
       </section>
 
       <RationAddSheet
-        key={`${addOpen}-${date}-${initialMeal}`}
+        key={`${addOpen}-${date}-${initialMeal}-${initialSource?.type ?? "none"}-${initialSource?.id ?? "none"}`}
         open={addOpen}
         date={date}
         initialMeal={initialMeal}
+        initialSource={initialSource}
         format={day.number_format}
         initData={initData}
         authorized={authorized}
@@ -323,7 +344,7 @@ export function RationPage() {
         onSaved={() => { refreshRation(); closeAdd(); }}
       />
       <RationEntrySheet
-        key={`${selectedEntry?.id ?? "none"}-${date}`}
+        key={`${selectedEntry?.id ?? "none"}-${selectedEntry?.updated_at ?? "none"}-${date}`}
         entry={selectedEntry}
         currentDate={date}
         format={day.number_format}
@@ -332,6 +353,7 @@ export function RationPage() {
         formatValue={formatValue}
         onClose={() => setSelectedEntry(null)}
         onChanged={refreshRation}
+        onConflictRefresh={refreshSelectedEntry}
       />
     </div>
   );

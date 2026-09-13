@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Copy, CookingPot, Pencil, Salad, Trash2 } from "lucide-react";
+import { CalendarDays, Copy, CookingPot, Pencil, RefreshCw, Salad, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 
 import {
@@ -20,6 +20,7 @@ const MEALS: Array<{ value: MealType; label: string }> = [
   { value: "snack", label: "Перекус" },
   { value: "other", label: "Другое" },
 ];
+const MEAL_LABELS = Object.fromEntries(MEALS.map((meal) => [meal.value, meal.label])) as Record<MealType, string>;
 
 type EditorMode = "details" | "edit" | "copy";
 
@@ -36,6 +37,7 @@ interface RationEntrySheetProps {
   formatValue: (value: string | number, format: NumberFormat) => string;
   onClose: () => void;
   onChanged: (affectedDate?: string) => void;
+  onConflictRefresh: (entryId: string) => Promise<void>;
 }
 
 export function RationEntrySheet({
@@ -47,6 +49,7 @@ export function RationEntrySheet({
   formatValue,
   onClose,
   onChanged,
+  onConflictRefresh,
 }: RationEntrySheetProps) {
   const { showToast } = useToast();
   const [mode, setMode] = useState<EditorMode>("details");
@@ -54,6 +57,7 @@ export function RationEntrySheet({
   const [meal, setMeal] = useState<MealType>(entry?.meal_type ?? "other");
   const [entryDate, setEntryDate] = useState(currentDate);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [refreshingConflict, setRefreshingConflict] = useState(false);
   const copyKey = useRef(mutationKey());
 
   const updateMutation = useMutation({
@@ -104,6 +108,20 @@ export function RationEntrySheet({
   const hasChanges = grams !== entry.grams || meal !== entry.meal_type || entryDate !== currentDate;
   const pending = updateMutation.isPending || copyMutation.isPending || deleteMutation.isPending;
   const mutationError = updateMutation.error ?? copyMutation.error ?? deleteMutation.error;
+  const isConflict = mutationError instanceof APIError && mutationError.status === 409;
+  const dateLabel = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${currentDate}T12:00:00`));
+  const refreshConflict = async () => {
+    setRefreshingConflict(true);
+    try {
+      await onConflictRefresh(entry.id);
+    } finally {
+      setRefreshingConflict(false);
+    }
+  };
 
   return (
     <>
@@ -113,6 +131,7 @@ export function RationEntrySheet({
           {mode === "details" ? (
             <>
               {!entry.source_available && <p className="source-warning">Исходный продукт удалён. Сохранённые значения записи не изменились.</p>}
+              <div className="entry-context"><CalendarDays aria-hidden="true" /><span><strong>{MEAL_LABELS[entry.meal_type]}</strong><small>{dateLabel}</small></span></div>
               <div className="entry-nutrition"><div><span>Калории</span><strong>{formatValue(entry.nutrition.energy_kcal, format)} ккал</strong></div><div><span>Белки</span><strong>{formatValue(entry.nutrition.protein_g, format)} г</strong></div><div><span>Жиры</span><strong>{formatValue(entry.nutrition.fat_g, format)} г</strong></div><div><span>Углеводы</span><strong>{formatValue(entry.nutrition.carbs_g, format)} г</strong></div></div>
               <div className="entry-actions">
                 <button type="button" onClick={() => setMode("edit")}><Pencil aria-hidden="true" /><span>Изменить</span></button>
@@ -127,8 +146,12 @@ export function RationEntrySheet({
                 <FormField label="Приём пищи" htmlFor="entry-meal"><select id="entry-meal" value={meal} onChange={(event) => { setMeal(event.target.value as MealType); copyKey.current = mutationKey(); }}>{MEALS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FormField>
                 {mode === "edit" && <FormField label="Количество, г" htmlFor="entry-grams" error={gramsError} hint={!entry.source_available ? "Исходный продукт удалён, изменить граммы нельзя" : undefined}><input id="entry-grams" inputMode="decimal" value={grams} disabled={!entry.source_available} onChange={(event) => setGrams(event.target.value)} /></FormField>}
               </div>
-              {mutationError && <p className="form-error">{mutationError.message}</p>}
-              {mutationError instanceof APIError && mutationError.status === 409 && <button type="button" className="button-text" onClick={() => onChanged()}>Обновить рацион</button>}
+              {isConflict ? (
+                <div className="ration-conflict" role="alert">
+                  <div><strong>Запись уже изменилась</strong><span>{mutationError.message}</span></div>
+                  <button type="button" className="button-secondary button-with-icon" disabled={refreshingConflict} onClick={() => void refreshConflict()}><RefreshCw aria-hidden="true" />{refreshingConflict ? "Обновляем..." : "Загрузить актуальную"}</button>
+                </div>
+              ) : mutationError ? <p className="form-error" role="alert">{mutationError.message}</p> : null}
               <div className="form-actions"><button type="button" className="button-secondary" onClick={() => setMode("details")}>Назад</button><button type="submit" className="button-primary" disabled={pending || Boolean(dateError) || (mode === "edit" && (!hasChanges || Boolean(gramsError)))}>{pending ? "Сохраняем..." : mode === "copy" ? "Скопировать" : "Сохранить"}</button></div>
             </form>
           )}

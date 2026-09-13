@@ -103,6 +103,7 @@ interface FoodEditorSheetProps {
   folders: FoodFolder[];
   onClose: () => void;
   onOpenExisting: (item: EditableFood) => void;
+  onSaved?: (item: EditableFood) => void;
 }
 
 export function FoodEditorSheet({
@@ -114,6 +115,7 @@ export function FoodEditorSheet({
   folders,
   onClose,
   onOpenExisting,
+  onSaved,
 }: FoodEditorSheetProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -161,10 +163,11 @@ export function FoodEditorSheet({
         : createIngredient(initData, input, idempotencyKey.current)
       );
     },
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       await invalidate();
       showToast(item ? "Ингредиент обновлен" : "Ингредиент добавлен");
-      onClose();
+      if (onSaved) onSaved(saved);
+      else onClose();
     },
     onError: (error) => {
       if (error instanceof APIError && error.status === 409) {
@@ -186,10 +189,11 @@ export function FoodEditorSheet({
       item
         ? updateDish(initData, item.id, dishInput)
         : createDish(initData, dishInput, idempotencyKey.current),
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       await invalidate();
       showToast(item ? "Блюдо обновлено" : "Блюдо добавлено");
-      onClose();
+      if (onSaved) onSaved(saved);
+      else onClose();
     },
     onError: (error) => {
       if (error instanceof APIError && error.status === 409) {

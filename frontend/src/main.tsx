@@ -9,6 +9,7 @@ import "./styles/base.css";
 import "./styles/shell.css";
 import "./styles/components.css";
 import "./styles.css";
+import "./styles/pages/ration.css";
 import { createTelegramAdapter } from "./telegram/adapter";
 
 const telegram = createTelegramAdapter();

@@ -62,24 +62,31 @@ const weightGoal = {
 
 export function createFixtures(theme, state = "populated") {
   const empty = state === "empty";
-  const rationEntries = empty ? [] : structuredClone(entries);
+  const rationEntries = empty ? [] : structuredClone(state === "single" ? entries.slice(0, 1) : entries);
   if (state === "deleted-source") Object.assign(rationEntries[0], { source_id: null, source_available: false });
   const totals = sum(rationEntries.map((entry) => entry.nutrition));
   const macroEnergy = Number(totals.protein_g) * 4 + Number(totals.fat_g) * 9 + Number(totals.carbs_g) * 4;
   const protein = macroEnergy ? Math.round(Number(totals.protein_g) * 400 / macroEnergy) : 0;
   const fat = macroEnergy ? Math.round(Number(totals.fat_g) * 900 / macroEnergy) : 0;
+  const rationGoal = empty || state === "no-goals"
+    ? null
+    : state === "partial-goals"
+      ? { ...goal, fat_g: null, carbs_g: null }
+      : state === "excess"
+        ? { ...goal, energy_kcal: "700" }
+        : goal;
   return {
     "/me": user,
     "/ui-preferences": { theme_mode: theme, default_section: "ration", default_weight_unit: "kg", compact_lists: state === "compact", updated_at: NOW },
     "/profile": { ...user, photo_url: null, number_format: "automatic", after_food_add_action: "open_today", confirm_deletions: true, reminders_enabled: !empty },
     "/profile/stats": Object.fromEntries(Object.entries({ diary_days: 42, ingredients: 8, dishes: 1, diary_entries: 210, weight_entries: 14, active_weight_goals: 1, share_packages: 2, imported_packages: 1 }).map(([key, value]) => [key, empty ? 0 : value])),
-    "/goals/nutrition": empty || state === "no-goals" ? null : goal,
+    "/goals/nutrition": rationGoal,
     "/reminders": empty ? [] : ["weigh_in", "nutrition"].map((type, i) => ({ id: `reminder-${i}`, type, enabled: i === 0, time_local: i === 0 ? "08:00" : "20:00", weekdays: [0, 1, 2, 3, 4, 5, 6], updated_at: NOW })),
     "/ration/day": {
       date: TODAY, timezone: user.timezone, number_format: "automatic", is_today: true, is_future: false,
       entry_count: rationEntries.length, totals,
       macro_percentages: { protein, fat, carbs: macroEnergy ? 100 - protein - fat : 0 },
-      goal: empty || state === "no-goals" ? null : goal,
+      goal: rationGoal,
       meals: ["Завтрак", "Обед", "Ужин", "Перекус", "Другое"].map((label, i) => {
         const type = ["breakfast", "lunch", "dinner", "snack", "other"][i];
         const mealEntries = rationEntries.filter((entry) => entry.meal_type === type);

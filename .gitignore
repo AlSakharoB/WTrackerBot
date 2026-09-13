@@ -17,5 +17,3 @@ frontend/dist/
 frontend/*.tsbuildinfo
 BOT*.md
 docs/*
-!docs/miniapp-redesign/
-!docs/miniapp-redesign/**

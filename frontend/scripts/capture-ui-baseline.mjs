@@ -14,7 +14,7 @@ assert(["localhost", "127.0.0.1", "[::1]"].includes(base.hostname), "Only a loca
 assert.equal(base.protocol, "http:");
 const output = resolve(root, process.env.UI_AUDIT_OUTPUT ?? "docs/miniapp-redesign/screenshots/baseline");
 const viewports = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1280, height: 800 }];
-const ready = { ration: ".ration-summary", food: ".food-row", weight: ".weight-chart-dot", profile: ".profile-summary" };
+const ready = { ration: ".ration-balance", food: ".food-row", weight: ".weight-chart-dot", profile: ".profile-summary" };
 const captures = [];
 const diagnostics = [];
 const errors = [];
@@ -47,6 +47,9 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
     if (primary && state === "error") return respond({ error: { message: "Сервис временно недоступен (тестовый ответ)", correlation_id: "audit-error" } }, 503);
     if (request.method() !== "GET") {
       if (apiPath === "/ingredients" && state === "duplicate") return respond({ error: { message: "Такой продукт уже существует", details: { existing: ingredients[0] } } }, 409);
+      if (state === "ration-conflict" && request.method() === "PATCH" && /^\/ration\/entries\//.test(apiPath)) {
+        return respond({ error: { message: "Запись была изменена в другом сеансе", correlation_id: "audit-conflict" } }, 409);
+      }
       const result = mutationResponse(apiPath, state);
       if (result !== undefined) return respond(result);
     } else {
@@ -112,7 +115,12 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
         documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
         documentHeight: document.documentElement.scrollHeight, scrollY,
         navigation: bounds(document.querySelector(".bottom-navigation")),
-        meals: bounds(document.querySelector(".ration-meals")), chart: bounds(document.querySelector(".weight-chart")),
+        balance: bounds(document.querySelector(".ration-balance")),
+        meals: bounds(document.querySelector(".ration-meals")),
+        mealsHeading: bounds(document.querySelector(".ration-meals .section-heading")),
+        addMealButton: bounds(document.querySelector('.ration-meals .section-heading a[href^="/ration/add"]')),
+        firstMeal: bounds(document.querySelector(".ration-meals .meal-section")),
+        chart: bounds(document.querySelector(".weight-chart")),
         dialog: bounds(document.querySelector('[role="alertdialog"]') ?? document.querySelector('[role="dialog"]')),
         smallControls: controls.filter((element) => { const rect = hitTarget(element).getBoundingClientRect(); return rect.width < 44 || rect.height < 44; }).map((element) => ({ label: element.getAttribute("aria-label") ?? element.textContent.trim().slice(0, 65), ...bounds(hitTarget(element)) })).slice(0, 30),
         smallInputs: controls.filter((element) => element.matches("input:not([type=checkbox]),select,textarea") && parseFloat(getComputedStyle(element).fontSize) < 16).map((element) => ({ id: element.id, fontSize: getComputedStyle(element).fontSize })),
@@ -146,7 +154,9 @@ try {
     await session.close();
   }
   for (const [section, state, path] of [
-    ["ration", "no-goals", "/ration"], ["ration", "populated", "/ration?date=2026-09-14"],
+    ["ration", "no-goals", "/ration"], ["ration", "single", "/ration"],
+    ["ration", "partial-goals", "/ration"], ["ration", "excess", "/ration"],
+    ["ration", "populated", "/ration?date=2026-09-14"],
     ["ration", "auth-error", "/ration"], ["food", "populated", "/food/share/audit"],
     ["food", "imported", "/food/share/audit"], ["profile", "populated", "/privacy-policy"],
     ["food", "compact", "/food"],
@@ -162,7 +172,7 @@ try {
   await ration.page.locator(".ration-source-list button").first().click();
   await ration.capture("ration-portion");
   // Measure focus escape without modifying the application under audit.
-  await ration.page.getByRole("button", { name: "Добавить в рацион", exact: true }).focus();
+  await ration.page.getByRole("button", { name: /^Добавить в / }).focus();
   await ration.page.keyboard.press("Tab");
   diagnostics.push({ check: "sheet-tab-focus", result: await ration.page.evaluate(() => ({ insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]')), focusedElement: document.activeElement?.tagName })) });
   await ration.close();
@@ -176,6 +186,15 @@ try {
   await entry.page.getByRole("button", { name: "Копировать", exact: true }).click();
   await entry.capture("ration-copy");
   await entry.close();
+
+  const conflict = await openPage("ration", { state: "ration-conflict" });
+  await conflict.page.getByRole("button", { name: /^Открыть запись/ }).first().click();
+  await conflict.page.getByRole("button", { name: "Изменить", exact: true }).click();
+  await conflict.page.getByLabel("Количество, г", { exact: true }).fill("301");
+  await conflict.page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await conflict.page.locator(".ration-conflict").waitFor();
+  await conflict.capture("ration-conflict");
+  await conflict.close();
 
   for (const theme of ["light", "dark"]) {
     const food = await openPage("food", { theme });
@@ -290,6 +309,15 @@ try {
   assert.deepEqual(headerResult, { clipped: true, clearsStatus: true, noHorizontalOverflow: true });
   await longHeader.capture("food-long-header");
   await longHeader.close();
+
+  const compactRation = captures.find(({ file }) => file === "ration-320x568-light.png");
+  assert(compactRation?.metrics.navigation && compactRation.metrics.mealsHeading && compactRation.metrics.addMealButton, "Compact ration metrics are unavailable");
+  const compactLimit = compactRation.metrics.navigation.y;
+  assert(compactRation.metrics.mealsHeading.y + compactRation.metrics.mealsHeading.height <= compactLimit, "Meals heading must be visible above navigation at 320x568");
+  assert(compactRation.metrics.addMealButton.y + compactRation.metrics.addMealButton.height <= compactLimit, "Primary add action must be visible above navigation at 320x568");
+  const phoneRation = captures.find(({ file }) => file === "ration-390x844-light.png");
+  assert(phoneRation?.metrics.navigation && phoneRation.metrics.firstMeal, "Phone ration metrics are unavailable");
+  assert(phoneRation.metrics.firstMeal.y < phoneRation.metrics.navigation.y, "First meal must begin above navigation at 390x844");
 
   assert.deepEqual(errors, [], "Browser or unmocked API failures");
   const manifest = {

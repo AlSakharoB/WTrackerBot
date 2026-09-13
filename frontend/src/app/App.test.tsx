@@ -47,7 +47,7 @@ describe("Mini App routes", () => {
   });
 
   it.each([
-    ["/ration", "Итоги дня"],
+    ["/ration", "Баланс КБЖУ"],
     ["/food", "Ингредиенты"],
     ["/weight", "Текущий вес"],
     ["/profile", "Внешний вид"],
@@ -149,6 +149,25 @@ describe("Mini App routes", () => {
     expect(screen.getByPlaceholderText("Найти ингредиент или блюдо")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ингредиенты" })).toBeInTheDocument();
     expect(telegram.bindBackButton).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the ration date and meal when the food editor is closed", async () => {
+    renderApp("/food/new?kind=ingredients&return=ration&date=2026-09-10&meal=lunch");
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть" }));
+
+    expect(await screen.findByRole("dialog", { name: "Добавить в рацион" })).toBeInTheDocument();
+    expect(screen.getByText(/10 сентября · Обед/i)).toBeInTheDocument();
+  });
+
+  it("keeps macro grams and the four default meals visible without goals", () => {
+    renderApp("/ration");
+
+    expect(screen.getByText("Цели не заданы")).toBeInTheDocument();
+    expect(screen.getAllByText("0 г")).toHaveLength(3);
+    for (const meal of ["Завтрак", "Обед", "Ужин", "Перекус"]) {
+      expect(screen.getByRole("heading", { name: meal })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("heading", { name: "Другое" })).not.toBeInTheDocument();
   });
 
   it("opens the weight entry and goal forms", async () => {

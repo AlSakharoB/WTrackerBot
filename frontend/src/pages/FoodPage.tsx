@@ -31,6 +31,8 @@ import {
   type FoodPageResult,
   type FoodSort,
   type Ingredient,
+  type MealType,
+  type RationSource,
   type SharingPackage,
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
@@ -52,6 +54,7 @@ const FOOD_OPTIONS = [
 ] as const;
 
 type FoodItem = Ingredient | Dish;
+const MEAL_TYPES = new Set<MealType>(["breakfast", "lunch", "dinner", "snack", "other"]);
 
 function mutationKey(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -96,6 +99,16 @@ export function FoodPage() {
   const [movingSelection, setMovingSelection] = useState(false);
   const shareMutationKey = useRef(mutationKey());
   const editorOpen = location.pathname.startsWith("/food/new") || editing !== null;
+  const editorParams = new URLSearchParams(location.search);
+  const returnsToRation = editorParams.get("return") === "ration";
+  const returnDate = /^\d{4}-\d{2}-\d{2}$/.test(editorParams.get("date") ?? "")
+    ? editorParams.get("date")!
+    : new Date().toISOString().slice(0, 10);
+  const requestedReturnMeal = editorParams.get("meal") as MealType | null;
+  const returnMeal = requestedReturnMeal && MEAL_TYPES.has(requestedReturnMeal)
+    ? requestedReturnMeal
+    : "other";
+  const rationReturnTarget = `/ration/add?date=${returnDate}&meal=${returnMeal}`;
 
   const foods = useInfiniteQuery({
     queryKey: ["food", kind, deferredQuery, sort, folder],
@@ -160,7 +173,27 @@ export function FoodPage() {
   };
   const closeEditor = () => {
     setEditing(null);
-    navigate("/food", { replace: true });
+    navigate(returnsToRation ? rationReturnTarget : "/food", { replace: true });
+  };
+  const finishEditor = (saved: FoodItem) => {
+    setEditing(null);
+    if (!returnsToRation) {
+      navigate("/food", { replace: true });
+      return;
+    }
+    const createdRationSource: RationSource = {
+      id: saved.id,
+      type: isDish(saved) ? "dish" : "ingredient",
+      name: saved.name,
+      default_grams: isDish(saved) ? saved.total_weight_g : "100",
+      nutrition_per_100g: saved.nutrition_per_100g,
+      usage_count: 0,
+      last_used_at: null,
+    };
+    navigate(rationReturnTarget, {
+      replace: true,
+      state: { createdRationSource },
+    });
   };
   const openExisting = (item: FoodItem) => {
     setEditing(item);
@@ -240,7 +273,7 @@ export function FoodPage() {
         )}
       </section>
 
-      {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : new URLSearchParams(location.search).get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} onClose={closeEditor} onOpenExisting={openExisting} />}
+      {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : editorParams.get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} onClose={closeEditor} onOpenExisting={openExisting} onSaved={finishEditor} />}
 
       <BarcodeScannerSheet open={barcodeScannerOpen} initData={initData} folders={folders} onClose={() => setBarcodeScannerOpen(false)} onOpenExisting={openExisting} />
 

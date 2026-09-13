@@ -195,6 +195,21 @@
 .skeleton > span:not(.sr-only):nth-of-type(2) { width: 55%; height: 34px; }
 @keyframes skeleton-loading { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
+.inline-empty {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  text-align: center;
+  font-size: 13px;
+}
+.inline-empty a { color: var(--color-action-primary); font-weight: 700; }
+
 .button-primary:disabled, .button-secondary:disabled, .button-danger:disabled, .button-text:disabled, .icon-button:disabled, .segmented-control button:disabled { cursor: default; opacity: .55; transform: none; }
 
 @media (hover: hover) and (pointer: fine) {
