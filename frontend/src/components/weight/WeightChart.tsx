@@ -104,7 +104,7 @@ export function WeightChart({ points, targetWeight, timezone, onSelect }: Weight
       <div className="weight-chart" role="group" aria-label="График изменения веса">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 12, right: 12, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke="var(--app-border)" strokeDasharray="3 5" vertical={false} />
+            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 5" vertical={false} />
             <XAxis
               dataKey="timestamp"
               type="number"
@@ -124,10 +124,10 @@ export function WeightChart({ points, targetWeight, timezone, onSelect }: Weight
               axisLine={false}
               fontSize={11}
             />
-            <Tooltip content={(props) => <ChartTooltip state={props} timezone={timezone} />} cursor={{ stroke: "var(--app-muted)", strokeDasharray: "3 4" }} />
-            {target !== null && <ReferenceLine y={target} stroke="var(--macro-energy)" strokeDasharray="6 5" label={{ value: "Цель", position: "insideTopRight", fill: "var(--app-muted)", fontSize: 11 }} />}
-            <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--app-muted)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
-            <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--app-primary)" strokeWidth={3} dot={renderDot} activeDot={{ r: 7 }} isAnimationActive={false} />
+            <Tooltip content={(props) => <ChartTooltip state={props} timezone={timezone} />} cursor={{ stroke: "var(--color-text-secondary)", strokeDasharray: "3 4" }} />
+            {target !== null && <ReferenceLine y={target} stroke="var(--color-energy)" strokeDasharray="6 5" label={{ value: "Цель", position: "insideTopRight", fill: "var(--color-text-secondary)", fontSize: 11 }} />}
+            <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--color-text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--color-action-primary)" strokeWidth={3} dot={renderDot} activeDot={{ r: 7 }} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

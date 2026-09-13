@@ -1,0 +1,109 @@
+.app-shell {
+  position: relative;
+  width: 100%;
+  max-width: 1120px;
+  height: var(--app-stable-height);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-background);
+  padding-left: var(--app-safe-left);
+  padding-right: var(--app-safe-right);
+}
+
+.top-bar {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 calc(var(--top-bar-height) + max(var(--app-safe-top), var(--app-content-safe-top)));
+  min-height: calc(var(--top-bar-height) + max(var(--app-safe-top), var(--app-content-safe-top)));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(8px + max(var(--app-safe-top), var(--app-content-safe-top))) 16px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  color: var(--color-action-on-primary);
+  background: var(--color-action-primary);
+  font-size: 20px;
+  font-weight: 800;
+}
+.top-bar__titles { min-width: 0; display: grid; line-height: 1.15; }
+.top-bar__titles strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.top-bar__titles small { margin-top: 3px; overflow: hidden; color: var(--color-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.connection-status {
+  min-width: 0;
+  min-height: var(--control-min-size);
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.connection-status i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--color-success); }
+.connection-status svg { width: 16px; height: 16px; color: var(--color-danger); }
+
+.app-content {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding: 12px 12px calc(var(--bottom-nav-height) + 12px + max(var(--app-safe-bottom), var(--app-content-safe-bottom)));
+  scroll-padding: 12px 0 calc(var(--bottom-nav-height) + 12px + max(var(--app-safe-bottom), var(--app-content-safe-bottom)));
+}
+.app-content:focus { outline: none; }
+.page { width: 100%; max-width: 1040px; margin: 0 auto; }
+
+.bottom-navigation {
+  position: absolute;
+  z-index: 30;
+  inset: auto 0 0;
+  height: calc(var(--bottom-nav-height) + max(var(--app-safe-bottom), var(--app-content-safe-bottom)));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 4px max(8px, var(--app-safe-right)) max(0px, max(var(--app-safe-bottom), var(--app-content-safe-bottom))) max(8px, var(--app-safe-left));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.bottom-navigation a {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 3px;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  text-decoration: none;
+}
+.bottom-navigation__icon { width: 28px; height: 24px; display: grid; place-items: center; }
+.bottom-navigation svg { width: 21px; height: 21px; stroke-width: 2; }
+.bottom-navigation a.is-active { color: var(--color-action-primary); font-weight: 700; }
+.bottom-navigation a.is-active svg { stroke-width: 2.5; }
+
+@media (min-width: 800px) {
+  body { background: var(--color-canvas); }
+  .app-shell { border-inline: 1px solid var(--color-border); }
+  .top-bar { padding-inline: 22px; }
+  .app-content { padding: 18px 20px calc(var(--bottom-nav-height) + 18px + max(var(--app-safe-bottom), var(--app-content-safe-bottom))); }
+  .bottom-navigation { padding-inline: max(25%, var(--app-safe-left)); }
+}
+
+@media (max-width: 350px) {
+  .top-bar, .app-content { padding-left: 12px; padding-right: 12px; }
+  .connection-status span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+}

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
 import type { MiniAppContext } from "../../app/context";
@@ -29,6 +29,7 @@ interface AppShellProps {
 
 export function AppShell({ telegram, context }: AppShellProps) {
   const location = useLocation();
+  const contentRef = useRef<HTMLElement>(null);
   const rootPath = `/${location.pathname.split("/").filter(Boolean)[0] ?? ""}`;
   const meta = SECTION_META[rootPath] ?? { title: "WTrackerBot" };
   useTelegramBackButton(telegram);
@@ -38,10 +39,17 @@ export function AppShell({ telegram, context }: AppShellProps) {
     if (section) localStorage.setItem("miniapp:last-section", section);
   }, [rootPath]);
 
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    if (typeof content.scrollTo === "function") content.scrollTo({ top: 0 });
+    else content.scrollTop = 0;
+  }, [rootPath]);
+
   return (
     <div className={`app-shell ${context.preferences.compact_lists ? "is-compact" : ""}`}>
       <TopBar title={meta.title} subtitle={meta.subtitle} />
-      <main className="app-content" id="main-content">
+      <main ref={contentRef} className="app-content" id="main-content" tabIndex={-1}>
         <Outlet context={context} />
       </main>
       <BottomNavigation />

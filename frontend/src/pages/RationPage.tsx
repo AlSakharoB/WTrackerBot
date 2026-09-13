@@ -142,7 +142,7 @@ function MacroOverview({ day }: { day: RationDay }) {
   const fatEnd = proteinEnd + macros.fat;
   const chartStyle: CSSProperties = hasMacros
     ? {
-        background: `conic-gradient(var(--macro-protein) 0 ${proteinEnd}%, var(--macro-fat) ${proteinEnd}% ${fatEnd}%, var(--macro-carbs) ${fatEnd}% 100%)`,
+        background: `conic-gradient(var(--color-macro-protein) 0 ${proteinEnd}%, var(--color-macro-fat) ${proteinEnd}% ${fatEnd}%, var(--color-macro-carbs) ${fatEnd}% 100%)`,
       }
     : {};
   return (

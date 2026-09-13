@@ -42,7 +42,7 @@ export function ErrorState({
       </span>
       <strong>{title}</strong>
       <p>{message}</p>
-      {onRetry && <button type="button" onClick={onRetry}>Повторить</button>}
+      {onRetry && <button type="button" className="button-secondary" onClick={onRetry}>Повторить</button>}
     </div>
   );
 }
@@ -50,8 +50,9 @@ export function ErrorState({
 export function Skeleton({ lines = 3 }: { lines?: number }) {
   return (
     <div className="skeleton" aria-busy="true" aria-label="Загрузка">
+      <span className="sr-only">Загрузка данных</span>
       {Array.from({ length: lines }, (_, index) => (
-        <span key={index} />
+        <span aria-hidden="true" key={index} />
       ))}
     </div>
   );

@@ -1,0 +1,531 @@
+{
+  "status": "complete",
+  "created_at": "2026-09-13T01:25:47.117Z",
+  "source": "frontend/design/ration-concepts",
+  "browser": "152.0.7977.84",
+  "captures": [
+    {
+      "concept": "a",
+      "theme": "light",
+      "page": "ration",
+      "sheet": false,
+      "state": "ration",
+      "viewport": "390x844",
+      "filename": "concept-a-ration-light-390x844.png",
+      "sha256": "0f46422803bb8ab11e219a55de84f4698f73f0fbe657bcda63dcdf8636fbac14",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "light",
+      "page": "food",
+      "sheet": false,
+      "state": "food",
+      "viewport": "390x844",
+      "filename": "concept-a-food-light-390x844.png",
+      "sha256": "18bb92bfa17d3bef93010aa6bf264a4bfa125218f49bdca2e2a383195a07f884",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "light",
+      "page": "weight",
+      "sheet": false,
+      "state": "weight",
+      "viewport": "390x844",
+      "filename": "concept-a-weight-light-390x844.png",
+      "sha256": "d72e9325168428c1061aaabe5b4cf0c636fa9b5a7f91f4e037e1c1505a30b3af",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "light",
+      "page": "profile",
+      "sheet": false,
+      "state": "profile",
+      "viewport": "390x844",
+      "filename": "concept-a-profile-light-390x844.png",
+      "sha256": "ba66c38d6859449916530c8b4d81d8540ff50c08d9a05077ca7466ec32348fe8",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "dark",
+      "page": "ration",
+      "sheet": false,
+      "state": "ration",
+      "viewport": "390x844",
+      "filename": "concept-a-ration-dark-390x844.png",
+      "sha256": "66d85bd2e8a76ba0c3f072c7ced4004435f68b9d55faba8c968437eac59eb5b7",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "dark",
+      "page": "food",
+      "sheet": false,
+      "state": "food",
+      "viewport": "390x844",
+      "filename": "concept-a-food-dark-390x844.png",
+      "sha256": "168f13638375b120f603d251a966d834fb28893fdb54f6782acaacb9dfc4c0c2",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "dark",
+      "page": "weight",
+      "sheet": false,
+      "state": "weight",
+      "viewport": "390x844",
+      "filename": "concept-a-weight-dark-390x844.png",
+      "sha256": "15f831c01d4d3477cce44e2027e023ad7c62d6862a9dfa9a793cc6d498d2efbc",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "dark",
+      "page": "profile",
+      "sheet": false,
+      "state": "profile",
+      "viewport": "390x844",
+      "filename": "concept-a-profile-dark-390x844.png",
+      "sha256": "83a1446b4648c870a8f5af03d32eed5b4e46a861ed041e690156d33759978eba",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "light",
+      "page": "ration",
+      "sheet": false,
+      "state": "ration",
+      "viewport": "390x844",
+      "filename": "concept-b-ration-light-390x844.png",
+      "sha256": "7f4cdbb5dafd305e17d8887c6d22e8244897796de43faf84908a32a0bd3569e7",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "light",
+      "page": "food",
+      "sheet": false,
+      "state": "food",
+      "viewport": "390x844",
+      "filename": "concept-b-food-light-390x844.png",
+      "sha256": "646ecb5285b73a44ab65b2bf081624afb9dbc12f9d4c4b08d2abedc20fd05871",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "light",
+      "page": "weight",
+      "sheet": false,
+      "state": "weight",
+      "viewport": "390x844",
+      "filename": "concept-b-weight-light-390x844.png",
+      "sha256": "5bb09458b0b5cece57b4aab8611623c30c34ca14ea7348fe178cc19998ab3f6d",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "light",
+      "page": "profile",
+      "sheet": false,
+      "state": "profile",
+      "viewport": "390x844",
+      "filename": "concept-b-profile-light-390x844.png",
+      "sha256": "60eb4f85649d2d7fc99f8d865e557a735986cf95bba2d46b397705afcdf6c1b7",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "dark",
+      "page": "ration",
+      "sheet": false,
+      "state": "ration",
+      "viewport": "390x844",
+      "filename": "concept-b-ration-dark-390x844.png",
+      "sha256": "d8d0ff6d47107de0c4b2d28922c9258d0dd35e814fa47f148cd36348c3091a19",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "dark",
+      "page": "food",
+      "sheet": false,
+      "state": "food",
+      "viewport": "390x844",
+      "filename": "concept-b-food-dark-390x844.png",
+      "sha256": "19e20bbf4c3c7b970a3e6adda1192ef737fabeb84c60d3c3bf4a35e92f8ecadd",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "dark",
+      "page": "weight",
+      "sheet": false,
+      "state": "weight",
+      "viewport": "390x844",
+      "filename": "concept-b-weight-dark-390x844.png",
+      "sha256": "20ef01b9ed7866f717cc450ed25f7ffbde613472754a3013cb95dd724ee345bb",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "dark",
+      "page": "profile",
+      "sheet": false,
+      "state": "profile",
+      "viewport": "390x844",
+      "filename": "concept-b-profile-dark-390x844.png",
+      "sha256": "3558afc0f054fff3a90378c93b79107127a672fdbb4eb8302e5045909c1feaf0",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "a",
+      "theme": "light",
+      "page": "ration",
+      "sheet": true,
+      "state": "add-sheet",
+      "viewport": "390x844",
+      "filename": "concept-a-add-sheet-light-390x844.png",
+      "sha256": "3088dbf64c590b34b255c255ba757b55481de03241817b68df0b86f66a8154d0",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    },
+    {
+      "concept": "b",
+      "theme": "light",
+      "page": "ration",
+      "sheet": true,
+      "state": "add-sheet",
+      "viewport": "390x844",
+      "filename": "concept-b-add-sheet-light-390x844.png",
+      "sha256": "98d40213a7cb3c291cb50760aa72b8307b76530a0d36f5202cae49b971fdcbfd",
+      "metrics": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "document": {
+          "width": 390,
+          "height": 844
+        },
+        "app": {
+          "width": 390,
+          "height": 844
+        },
+        "nav": {
+          "top": 778,
+          "bottom": 844
+        },
+        "smallControls": []
+      }
+    }
+  ],
+  "errors": []
+}

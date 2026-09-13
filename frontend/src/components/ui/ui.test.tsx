@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ConfirmDialog, FormField, ProgressBar } from ".";
+import { BottomSheet, ConfirmDialog, FormField, ProgressBar } from ".";
 
 describe("shared UI components", () => {
   it("clamps progress visually and for assistive technology", () => {
@@ -37,5 +37,55 @@ describe("shared UI components", () => {
     );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("locks the page and restores focus around a bottom sheet", async () => {
+    const appRoot = document.createElement("div");
+    appRoot.id = "root";
+    document.body.append(appRoot);
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    const { rerender } = render(
+      <BottomSheet open title="Редактор" onClose={vi.fn()}>
+        <button type="button">Сохранить</button>
+      </BottomSheet>,
+    );
+
+    await waitFor(() => expect(document.body).toHaveAttribute("data-overlay-open"));
+    expect(document.getElementById("root")).toHaveProperty("inert", true);
+    expect(screen.getByRole("dialog", { name: "Редактор" })).toContainElement(document.activeElement as HTMLElement);
+
+    rerender(
+      <BottomSheet open={false} title="Редактор" onClose={vi.fn()}>
+        <button type="button">Сохранить</button>
+      </BottomSheet>,
+    );
+    await waitFor(() => expect(document.body).not.toHaveAttribute("data-overlay-open"));
+    expect(document.getElementById("root")).toHaveProperty("inert", false);
+    expect(trigger).toHaveFocus();
+    trigger.remove();
+    appRoot.remove();
+  });
+
+  it("keeps keyboard focus inside a confirmation dialog", async () => {
+    render(
+      <ConfirmDialog
+        open
+        title="Удалить запись?"
+        description="Действие нельзя отменить."
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const cancel = screen.getByRole("button", { name: "Отмена" });
+    const confirm = screen.getByRole("button", { name: "Подтвердить" });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    confirm.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    cancel.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
   });
 });

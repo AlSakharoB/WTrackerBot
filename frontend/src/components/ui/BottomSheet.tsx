@@ -1,7 +1,9 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { IconButton } from "./IconButton";
+import { useModalLayer } from "./useModalLayer";
 
 interface BottomSheetProps {
   open: boolean;
@@ -12,36 +14,38 @@ interface BottomSheetProps {
 
 export function BottomSheet({ open, title, children, onClose }: BottomSheetProps) {
   const sheetRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    sheetRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
+  const titleId = useId();
+  const { isTopLayer } = useModalLayer({
+    open,
+    containerRef: sheetRef,
+    onClose,
+  });
 
   if (!open) return null;
-  return (
-    <div className="sheet-backdrop" role="presentation" onMouseDown={onClose}>
+  return createPortal(
+    <div
+      className="sheet-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && isTopLayer()) onClose();
+      }}
+    >
       <section
         ref={sheetRef}
         className="bottom-sheet"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="sheet-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="bottom-sheet__handle" aria-hidden="true" />
         <header>
-          <h2 id="sheet-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <IconButton label="Закрыть" icon={X} onClick={onClose} />
         </header>
         <div className="bottom-sheet__content">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

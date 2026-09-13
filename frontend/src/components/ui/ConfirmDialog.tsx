@@ -1,4 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
+
+import { useModalLayer } from "./useModalLayer";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -19,31 +22,37 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    cancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
+  const titleId = useId();
+  const descriptionId = useId();
+  const { isTopLayer } = useModalLayer({
+    open,
+    containerRef: dialogRef,
+    initialFocusRef: cancelRef,
+    onClose,
+  });
 
   if (!open) return null;
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+  return createPortal(
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && isTopLayer()) onClose();
+      }}
+    >
       <section
+        ref={dialogRef}
         className="confirm-dialog"
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-description"
-        onMouseDown={(event) => event.stopPropagation()}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
       >
-        <h2 id="confirm-title">{title}</h2>
-        <p id="confirm-description">{description}</p>
+        <h2 id={titleId}>{title}</h2>
+        <p id={descriptionId}>{description}</p>
         <div className="dialog-actions">
           <button ref={cancelRef} type="button" className="button-secondary" onClick={onClose}>
             Отмена
@@ -57,6 +66,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

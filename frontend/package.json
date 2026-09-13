@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
-    "audit:ui": "node scripts/capture-ui-baseline.mjs"
+    "audit:ui": "node scripts/capture-ui-baseline.mjs",
+    "design:capture": "node scripts/capture-ration-concepts.mjs",
+    "design:capture-final": "node scripts/capture-final-blueprints.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": ">=5.0.0 <6.0.0",

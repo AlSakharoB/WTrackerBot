@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +42,7 @@ describe("Mini App routes", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-theme-mode");
     document.documentElement.removeAttribute("style");
   });
 
@@ -73,6 +74,25 @@ describe("Mini App routes", () => {
     renderApp("/food/new", telegram);
     expect(screen.getByRole("dialog", { name: "Добавить ингредиент" })).toBeInTheDocument();
     expect(telegram.bindBackButton).toHaveBeenCalledOnce();
+  });
+
+  it("uses Telegram BackButton to close an overlay on a primary route", async () => {
+    let handleBack: () => void = () => undefined;
+    const bindBackButton = vi.fn((callback: () => void) => {
+      handleBack = callback;
+      return () => undefined;
+    });
+    const telegram = createPreviewAdapter({ bindBackButton });
+    renderApp("/weight", telegram);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Записать" }));
+    expect(screen.getByRole("dialog", { name: "Записать вес" })).toBeInTheDocument();
+    await waitFor(() => expect(bindBackButton).toHaveBeenCalledOnce());
+
+    handleBack();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Записать вес" })).not.toBeInTheDocument();
+    });
   });
 
   it("opens the searchable dish editor from a direct route", () => {
@@ -160,6 +180,7 @@ describe("Mini App routes", () => {
     renderApp("/profile");
     fireEvent.click(screen.getByRole("button", { name: "Темная" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.themeMode).toBe("dark");
   });
 
   it("marks a future ration date explicitly", () => {

@@ -18,6 +18,7 @@ const ready = { ration: ".ration-summary", food: ".food-row", weight: ".weight-c
 const captures = [];
 const diagnostics = [];
 const errors = [];
+const auditTitle = process.env.UI_AUDIT_TITLE ?? "MR1: текущий интерфейс";
 await mkdir(output, { recursive: true });
 await writeFile(resolve(output, "run-status.json"), '{"status":"running"}\n');
 let browser;
@@ -106,13 +107,14 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
         return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
       };
       const controls = [...document.querySelectorAll("button, a, input, select, textarea, [role=button]")].filter((element) => element.getClientRects().length && getComputedStyle(element).visibility !== "hidden");
+      const hitTarget = (element) => element.matches('input[type="checkbox"], input[type="radio"]') && element.closest("label") ? element.closest("label") : element;
       return {
         documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
         documentHeight: document.documentElement.scrollHeight, scrollY,
         navigation: bounds(document.querySelector(".bottom-navigation")),
         meals: bounds(document.querySelector(".ration-meals")), chart: bounds(document.querySelector(".weight-chart")),
         dialog: bounds(document.querySelector('[role="alertdialog"]') ?? document.querySelector('[role="dialog"]')),
-        smallControls: controls.filter((element) => { const rect = element.getBoundingClientRect(); return rect.width < 44 || rect.height < 44; }).map((element) => ({ label: element.getAttribute("aria-label") ?? element.textContent.trim().slice(0, 65), ...bounds(element) })).slice(0, 30),
+        smallControls: controls.filter((element) => { const rect = hitTarget(element).getBoundingClientRect(); return rect.width < 44 || rect.height < 44; }).map((element) => ({ label: element.getAttribute("aria-label") ?? element.textContent.trim().slice(0, 65), ...bounds(hitTarget(element)) })).slice(0, 30),
         smallInputs: controls.filter((element) => element.matches("input:not([type=checkbox]),select,textarea") && parseFloat(getComputedStyle(element).fontSize) < 16).map((element) => ({ id: element.id, fontSize: getComputedStyle(element).fontSize })),
         theme: document.documentElement.dataset.theme, background: getComputedStyle(document.body).backgroundColor,
       };
@@ -265,19 +267,39 @@ try {
   await insets.capture("food-safe-area");
   await insets.close();
   const offline = await openPage("food", { state: "offline" });
-  await offline.page.locator(".offline-indicator").waitFor();
+  await offline.page.locator(".connection-status.is-offline").waitFor();
   await offline.capture("food-offline-indicator");
   await offline.close();
+
+  const longHeader = await openPage("food", { viewport: viewports[0] });
+  const headerResult = await longHeader.page.evaluate(() => {
+    const title = document.querySelector(".top-bar__titles small");
+    const titles = document.querySelector(".top-bar__titles");
+    const status = document.querySelector(".connection-status");
+    if (!title || !titles || !status) throw new Error("Top bar is unavailable");
+    title.textContent = "Еда · Очень длинное название пользовательского раздела продуктов";
+    const titlesRect = titles.getBoundingClientRect();
+    const statusRect = status.getBoundingClientRect();
+    return {
+      clipped: title.scrollWidth > title.clientWidth,
+      clearsStatus: titlesRect.right <= statusRect.left,
+      noHorizontalOverflow: document.documentElement.scrollWidth === innerWidth,
+    };
+  });
+  diagnostics.push({ check: "long-header", result: headerResult });
+  assert.deepEqual(headerResult, { clipped: true, clearsStatus: true, noHorizontalOverflow: true });
+  await longHeader.capture("food-long-header");
+  await longHeader.close();
 
   assert.deepEqual(errors, [], "Browser or unmocked API failures");
   const manifest = {
     revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     browser: browser.version(), browserConnection: process.env.UI_AUDIT_CDP_URL ? "cdp" : "local", platform: process.platform, clock: NOW,
     fixtureSha256: createHash("sha256").update(await readFile(new URL("./ui-baseline-fixtures.mjs", import.meta.url))).digest("hex"),
-    captures, diagnostics, errors,
+    title: auditTitle, captures, diagnostics, errors,
   };
   await writeFile(resolve(output, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  const gallery = `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MR1 UI baseline</title><style>body{font:14px system-ui;margin:24px;background:#eceff1;color:#202623}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}figure{margin:0;min-width:0}img{width:100%;max-height:620px;object-fit:contain;object-position:top;background:#dce2df}figcaption{overflow-wrap:anywhere;padding:8px 0}a{color:#1667a8}</style><h1>MR1: текущий интерфейс</h1><p>Синтетические данные. Chromium ${browser.version()}. ${captures.length} снимков. <a href="manifest.json">Метрики и запросы</a></p><main>${captures.map(({ file }) => `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${file}"></a><figcaption>${file}</figcaption></figure>`).join("")}</main></html>`;
+  const gallery = `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${auditTitle}</title><style>body{font:14px system-ui;margin:24px;background:#eceff1;color:#202623}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}figure{margin:0;min-width:0}img{width:100%;max-height:620px;object-fit:contain;object-position:top;background:#dce2df}figcaption{overflow-wrap:anywhere;padding:8px 0}a{color:#1667a8}</style><h1>${auditTitle}</h1><p>Синтетические данные. Chromium ${browser.version()}. ${captures.length} снимков. <a href="manifest.json">Метрики и запросы</a></p><main>${captures.map(({ file }) => `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${file}"></a><figcaption>${file}</figcaption></figure>`).join("")}</main></html>`;
   await writeFile(resolve(output, "index.html"), gallery);
   await writeFile(resolve(output, "run-status.json"), `${JSON.stringify({ status: "complete", captures: captures.length })}\n`);
   console.log(`Captured ${captures.length} images in ${output}`);

@@ -1,5 +1,11 @@
 import { cloneElement, isValidElement, type ReactElement } from "react";
 
+interface FieldControlProps {
+  "aria-describedby"?: string;
+  "aria-errormessage"?: string;
+  "aria-invalid"?: boolean;
+}
+
 interface FormFieldProps {
   label: string;
   htmlFor: string;
@@ -16,12 +22,14 @@ export function FormField({
   children,
 }: FormFieldProps) {
   const descriptionId = `${htmlFor}-description`;
+  const field = children as ReactElement<FieldControlProps>;
+  const describedBy = [field.props["aria-describedby"], error || hint ? descriptionId : undefined]
+    .filter(Boolean)
+    .join(" ") || undefined;
   const control = isValidElement(children)
-    ? cloneElement(children as ReactElement<{
-        "aria-describedby"?: string;
-        "aria-invalid"?: boolean;
-      }>, {
-        "aria-describedby": error || hint ? descriptionId : undefined,
+    ? cloneElement(field, {
+        "aria-describedby": describedBy,
+        "aria-errormessage": error ? descriptionId : undefined,
         "aria-invalid": error ? true : undefined,
       })
     : children;
@@ -30,7 +38,7 @@ export function FormField({
       <label htmlFor={htmlFor}>{label}</label>
       {control}
       {(error || hint) && (
-        <span id={descriptionId} className="form-field__message">
+        <span id={descriptionId} className="form-field__message" role={error ? "alert" : undefined}>
           {error ?? hint}
         </span>
       )}
