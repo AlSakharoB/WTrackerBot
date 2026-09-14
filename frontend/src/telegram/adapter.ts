@@ -18,6 +18,7 @@ export interface TelegramAdapter {
   subscribeTheme(callback: () => void): () => void;
   subscribeViewport(callback: () => void): () => void;
   bindBackButton(callback: () => void): () => void;
+  close?(): void;
 }
 
 class WebAppTelegramAdapter implements TelegramAdapter {
@@ -73,6 +74,10 @@ class WebAppTelegramAdapter implements TelegramAdapter {
       backButton.offClick(callback);
       backButton.hide();
     };
+  }
+
+  public close(): void {
+    this.webApp.close?.();
   }
 }
 

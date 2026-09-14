@@ -75,6 +75,7 @@ interface RationAddSheetProps {
   format: NumberFormat;
   initData: string;
   authorized: boolean;
+  stayOpenAfterSave?: boolean;
   formatValue: (value: string | number, format: NumberFormat) => string;
   onClose: () => void;
   onSaved: () => void;
@@ -88,6 +89,7 @@ export function RationAddSheet({
   format,
   initData,
   authorized,
+  stayOpenAfterSave = false,
   formatValue,
   onClose,
   onSaved,
@@ -126,6 +128,11 @@ export function RationAddSheet({
     onSuccess: () => {
       idempotencyKey.current = mutationKey();
       showToast("Запись добавлена");
+      if (stayOpenAfterSave) {
+        setSelected(null);
+        setQuery("");
+        setGrams("100");
+      }
       onSaved();
     },
   });

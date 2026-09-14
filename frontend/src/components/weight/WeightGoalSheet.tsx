@@ -10,6 +10,7 @@ interface WeightGoalSheetProps {
   goal: WeightGoal | null;
   initData: string;
   authorized: boolean;
+  confirmDeletions?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -19,6 +20,7 @@ export function WeightGoalSheet({
   goal,
   initData,
   authorized,
+  confirmDeletions = true,
   onClose,
   onChanged,
 }: WeightGoalSheetProps) {
@@ -99,7 +101,7 @@ export function WeightGoalSheet({
               <button
                 type="button"
                 className="button-text button-text--danger"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => { if (confirmDeletions) setConfirmDelete(true); else if (!deleteMutation.isPending) deleteMutation.mutate(); }}
               >
                 <Trash2 aria-hidden="true" size={17} /> Удалить цель
               </button>

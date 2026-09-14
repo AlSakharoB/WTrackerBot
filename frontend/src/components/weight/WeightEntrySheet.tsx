@@ -36,6 +36,7 @@ interface WeightEntrySheetProps {
   timezone: string;
   initData: string;
   authorized: boolean;
+  confirmDeletions?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -46,6 +47,7 @@ export function WeightEntrySheet({
   timezone,
   initData,
   authorized,
+  confirmDeletions = true,
   onClose,
   onChanged,
 }: WeightEntrySheetProps) {
@@ -104,7 +106,9 @@ export function WeightEntrySheet({
     ? undefined
     : "Введите вес от 20 до 500 кг";
   const measuredAtError = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(measuredAt)
-    ? undefined
+    ? measuredAt > localDateTime(new Date(), timezone)
+      ? "Дата измерения не может быть в будущем"
+      : undefined
     : "Укажите дату и время";
   const originalMeasuredAt = entry ? localDateTime(entry.measured_at, timezone) : "";
   const hasChanges = !entry
@@ -143,6 +147,7 @@ export function WeightEntrySheet({
               <input
                 id="weight-measured-at"
                 type="datetime-local"
+                max={localDateTime(new Date(), timezone)}
                 value={measuredAt}
                 onChange={(event) => {
                   setMeasuredAt(event.target.value);
@@ -173,7 +178,7 @@ export function WeightEntrySheet({
               <button
                 type="button"
                 className="button-text button-text--danger"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => { if (confirmDeletions) setConfirmDelete(true); else if (!deleteMutation.isPending) deleteMutation.mutate(); }}
               >
                 <Trash2 aria-hidden="true" size={17} /> Удалить
               </button>

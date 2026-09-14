@@ -1,17 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { LockKeyhole, RefreshCw, RouteOff } from "lucide-react";
 
 import {
+  APIError,
   fetchCurrentUser,
+  fetchProfile,
   fetchUIPreferences,
+  updateProfileSettings,
   updateUIPreferences,
   type DefaultSection,
+  type Profile,
+  type ProfileSettingsUpdate,
   type UIPreferences,
   type UIPreferencesUpdate,
 } from "../api/client";
 import { AppShell } from "../components/layout/AppShell";
-import { ErrorState, Skeleton, ToastProvider } from "../components/ui";
+import { ProductState, Skeleton, ToastProvider } from "../components/ui";
 import { FoodPage } from "../pages/FoodPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { PrivacyPolicyPage } from "../pages/PrivacyPolicyPage";
@@ -33,6 +39,22 @@ const DEFAULT_PREFERENCES: UIPreferences = {
   updated_at: "",
 };
 
+const PREVIEW_PROFILE: Profile = {
+  id: "preview",
+  telegram_id: "preview",
+  username: "preview",
+  first_name: "Алексей",
+  last_name: null,
+  language_code: "ru",
+  timezone: "Europe/Moscow",
+  app_version: "dev",
+  photo_url: null,
+  number_format: "automatic",
+  after_food_add_action: "open_today",
+  confirm_deletions: true,
+  reminders_enabled: false,
+};
+
 const VALID_SECTIONS = new Set<DefaultSection>([
   "ration",
   "food",
@@ -45,8 +67,7 @@ interface AppProps {
 }
 
 function InitialRedirect({ defaultSection }: { defaultSection: DefaultSection }) {
-  const stored = localStorage.getItem("miniapp:last-section") as DefaultSection | null;
-  const section = stored && VALID_SECTIONS.has(stored) ? stored : defaultSection;
+  const section = VALID_SECTIONS.has(defaultSection) ? defaultSection : "ration";
   return <Navigate replace to={`/${section}`} />;
 }
 
@@ -54,6 +75,7 @@ export function App({ telegram }: AppProps) {
   const queryClient = useQueryClient();
   const location = useLocation();
   const [previewPreferences, setPreviewPreferences] = useState(DEFAULT_PREFERENCES);
+  const [previewProfile, setPreviewProfile] = useState(PREVIEW_PROFILE);
   const hasAuthorization = telegram.initData.length > 0;
   const allowApplication = hasAuthorization || telegram.isDevelopmentPreview;
 
@@ -69,6 +91,12 @@ export function App({ telegram }: AppProps) {
     enabled: hasAuthorization,
     retry: false,
   });
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: () => fetchProfile(telegram.initData),
+    enabled: hasAuthorization,
+    retry: false,
+  });
   const preferencesMutation = useMutation({
     mutationFn: (update: UIPreferencesUpdate) =>
       updateUIPreferences(telegram.initData, update),
@@ -76,10 +104,20 @@ export function App({ telegram }: AppProps) {
       queryClient.setQueryData(["ui-preferences"], preferences);
     },
   });
+  const profileMutation = useMutation({
+    mutationFn: (update: ProfileSettingsUpdate) =>
+      updateProfileSettings(telegram.initData, update),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(["profile"], profile);
+    },
+  });
 
   const preferences = hasAuthorization
     ? (preferencesQuery.data ?? DEFAULT_PREFERENCES)
     : previewPreferences;
+  const profile = hasAuthorization
+    ? (profileQuery.data ?? { ...PREVIEW_PROFILE, ...(userQuery.data ?? {}) })
+    : previewProfile;
   useTelegramEnvironment(telegram, preferences.theme_mode);
 
   if (location.pathname === "/privacy-policy") {
@@ -88,33 +126,33 @@ export function App({ telegram }: AppProps) {
 
   if (!allowApplication) {
     return (
-      <main className="status-screen">
-        <section aria-labelledby="auth-title">
-          <p className="eyebrow">WTrackerBot Mini App</p>
-          <h1 id="auth-title">Откройте приложение из Telegram</h1>
-          <p>Авторизационные данные Telegram не получены.</p>
-        </section>
-      </main>
+      <ProductState
+        icon={LockKeyhole}
+        eyebrow="WTrackerBot Mini App"
+        title="Откройте приложение из Telegram"
+        message="Авторизационные данные Telegram не получены. Вернитесь в диалог с ботом и откройте Mini App из меню."
+      />
     );
   }
 
-  if (hasAuthorization && (userQuery.isPending || preferencesQuery.isPending)) {
-    return <main className="status-screen"><Skeleton lines={4} /></main>;
+  if (hasAuthorization && (userQuery.isPending || preferencesQuery.isPending || profileQuery.isPending)) {
+    return <ProductState busy title="Запускаем WTracker" message="Загружаем профиль и настройки приложения." />;
   }
 
-  const failedQuery = userQuery.error ?? preferencesQuery.error;
+  const failedQuery = userQuery.error ?? preferencesQuery.error ?? profileQuery.error;
   if (hasAuthorization && failedQuery) {
+    const offline = !navigator.onLine;
+    const failureMessage = failedQuery instanceof APIError && failedQuery.correlationId
+      ? `${failedQuery.message} (Correlation ID: ${failedQuery.correlationId})`
+      : failedQuery.message;
     return (
-      <main className="status-screen">
-        <ErrorState
-          title="Не удалось открыть приложение"
-          message={failedQuery.message}
-          onRetry={() => {
-            void userQuery.refetch();
-            void preferencesQuery.refetch();
-          }}
-        />
-      </main>
+      <ProductState
+        icon={RefreshCw}
+        tone="error"
+        title={offline ? "Нет подключения" : "Не удалось открыть приложение"}
+        message={offline ? "Проверьте интернет-соединение и повторите загрузку." : failureMessage}
+        action={<button type="button" className="button-primary" onClick={() => { void userQuery.refetch(); void preferencesQuery.refetch(); void profileQuery.refetch(); }}>Повторить</button>}
+      />
     );
   }
 
@@ -125,13 +163,27 @@ export function App({ telegram }: AppProps) {
     }
     setPreviewPreferences((current) => ({ ...current, ...update }));
   };
+  const updateProfile = async (update: ProfileSettingsUpdate) => {
+    if (hasAuthorization) {
+      await profileMutation.mutateAsync(update);
+      if (update.timezone) {
+        await queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      }
+      return;
+    }
+    setPreviewProfile((current) => ({ ...current, ...update }));
+  };
   const context: MiniAppContext = {
     user: userQuery.data ?? null,
+    profile,
     initData: telegram.initData,
     preferences,
     isDevelopmentPreview: telegram.isDevelopmentPreview,
     updatePreferences,
+    updateProfile,
     preferencesPending: preferencesMutation.isPending,
+    profilePending: profileMutation.isPending,
+    closeMiniApp: () => telegram.close?.(),
   };
 
   return (
@@ -152,13 +204,16 @@ export function App({ telegram }: AppProps) {
             element={<Suspense fallback={<div className="page"><Skeleton lines={7} /></div>}><WeightPage /></Suspense>}
           />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route
-            path="*"
-            element={
-              <div className="page">
-                <ErrorState
+        <Route
+          path="*"
+          element={
+              <div className="page page--system-state">
+                <ProductState
+                  contained
+                  icon={RouteOff}
                   title="Раздел не найден"
-                  message="Вернитесь в один из основных разделов."
+                  message="Адрес мог измениться. Вернитесь к рациону или выберите раздел в нижнем меню."
+                  action={<Link className="button-primary" to={`/${preferences.default_section}`}>Вернуться в приложение</Link>}
                 />
               </div>
             }

@@ -39,7 +39,7 @@
 .ration-balance__status.is-excess, .ration-balance__status.is-excess strong { color: var(--color-danger); }
 .ration-balance__status.is-excess > svg { background: var(--color-danger-soft); }
 
-.macro-overview { min-width: 0; display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: 13px; }
+.macro-overview { min-width: 0; display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: 13px; padding-block: 8px; }
 .macro-ring { position: relative; width: 108px; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; }
 .macro-ring::after { position: absolute; width: 74px; aspect-ratio: 1; border-radius: 50%; background: var(--color-surface); content: ""; }
 .macro-ring.is-empty { border: 15px solid var(--color-border); background: transparent; }

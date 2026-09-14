@@ -152,7 +152,7 @@ function DayBalance({ day }: { day: RationDay }) {
   const statusLabel = difference === null
     ? "Цели не заданы"
     : isExcess
-      ? "Цель превышена"
+      ? "Цель превышена на"
       : difference === 0
         ? "Цель выполнена"
         : "Осталось";
@@ -236,7 +236,7 @@ function MealSection({
                 </span>
                 <span className="meal-entry__energy">{formatValue(entry.nutrition.energy_kcal, format)} <small>ккал</small></span>
               </button>
-              <button type="button" className="icon-button icon-button--small" aria-label={`Открыть запись ${entry.source_name}`} onClick={() => onSelectEntry(entry)}><EllipsisVertical aria-hidden="true" /></button>
+              <button type="button" className="icon-button icon-button--small" aria-label={`Действия с записью ${entry.source_name}`} onClick={() => onSelectEntry(entry)}><EllipsisVertical aria-hidden="true" /></button>
             </div>
           ))}
         </div>
@@ -261,7 +261,7 @@ function RationPageSkeleton({ date, today, onChange }: { date: string; today: st
 }
 
 export function RationPage() {
-  const { user, initData } = useMiniAppContext();
+  const { user, profile, initData } = useMiniAppContext();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -339,9 +339,16 @@ export function RationPage() {
         format={day.number_format}
         initData={initData}
         authorized={authorized}
+        stayOpenAfterSave={profile.after_food_add_action === "stay"}
         formatValue={formatValue}
         onClose={closeAdd}
-        onSaved={() => { refreshRation(); closeAdd(); }}
+        onSaved={() => {
+          refreshRation();
+          if (profile.after_food_add_action === "open_today") {
+            setDate(today);
+            navigate(`/ration?date=${today}`, { replace: true });
+          }
+        }}
       />
       <RationEntrySheet
         key={`${selectedEntry?.id ?? "none"}-${selectedEntry?.updated_at ?? "none"}-${date}`}
@@ -350,6 +357,7 @@ export function RationPage() {
         format={day.number_format}
         initData={initData}
         authorized={authorized}
+        confirmDeletions={profile.confirm_deletions}
         formatValue={formatValue}
         onClose={() => setSelectedEntry(null)}
         onChanged={refreshRation}

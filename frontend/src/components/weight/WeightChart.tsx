@@ -1,3 +1,11 @@
+import { Pencil } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   CartesianGrid,
   Line,
@@ -10,6 +18,15 @@ import {
 } from "recharts";
 
 import type { WeightChartPoint } from "../../api/client";
+import {
+  gestureDirection,
+  inclusiveDayCount,
+  isSameWeightRange,
+  panWeightRange,
+  zoomWeightRange,
+  type GestureDirection,
+  type WeightDateRange,
+} from "./weightRangeController";
 
 interface ChartDatum extends WeightChartPoint {
   timestamp: number;
@@ -28,6 +45,21 @@ interface TooltipState {
   payload?: ReadonlyArray<{ payload?: ChartDatum }>;
 }
 
+interface ActivePointer {
+  x: number;
+  y: number;
+}
+
+interface ActiveGesture {
+  kind: GestureDirection | "pinch";
+  initialRange: WeightDateRange;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  pinchDistance: number;
+  pinchMidpointRatio: number;
+}
+
 function formatDate(value: string, timezone: string, withTime = false): string {
   return new Intl.DateTimeFormat("ru-RU", {
     timeZone: timezone,
@@ -35,6 +67,25 @@ function formatDate(value: string, timezone: string, withTime = false): string {
     month: "short",
     ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
   }).format(new Date(value));
+}
+
+function timestampInTimezone(value: string, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+}
+
+function chartBoundary(value: string, end = false): number {
+  return Date.parse(`${value}T${end ? "23:59:59.999" : "00:00:00.000"}Z`);
 }
 
 function ChartTooltip({ state, timezone }: { state: unknown; timezone: string }) {
@@ -51,7 +102,7 @@ function ChartTooltip({ state, timezone }: { state: unknown; timezone: string })
 }
 
 function yDomain(points: ChartDatum[], target: number | null): [number, number] {
-  const values = points.map((point) => point.weight);
+  const values = points.flatMap((point) => point.average === null ? [point.weight] : [point.weight, point.average]);
   if (target !== null) values.push(target);
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
@@ -59,83 +110,249 @@ function yDomain(points: ChartDatum[], target: number | null): [number, number] 
   return [Math.floor((minimum - padding) * 10) / 10, Math.ceil((maximum + padding) * 10) / 10];
 }
 
+function pointerDistance(first: ActivePointer, second: ActivePointer): number {
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function accessibleSummary(points: ChartDatum[], timezone: string): string {
+  if (points.length === 1) {
+    return `Одно измерение: ${points[0].weight_kg} кг, ${formatDate(points[0].measured_at, timezone, true)}.`;
+  }
+  const first = points[0];
+  const last = points.at(-1)!;
+  const change = last.weight - first.weight;
+  const direction = change < 0 ? "снижение" : change > 0 ? "увеличение" : "без изменения";
+  return `${points.length} измерений с ${formatDate(first.measured_at, timezone)} по ${formatDate(last.measured_at, timezone)}. ${direction}: ${Math.abs(change).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг.`;
+}
+
 interface WeightChartProps {
   points: WeightChartPoint[];
   targetWeight: string | null;
   timezone: string;
+  range: WeightDateRange;
+  today: string;
+  isLoading?: boolean;
+  onRangeCommit: (range: WeightDateRange) => void;
   onSelect: (entry: WeightChartPoint) => void;
 }
 
-export function WeightChart({ points, targetWeight, timezone, onSelect }: WeightChartProps) {
-  const data: ChartDatum[] = points.map((point) => ({
-    ...point,
-    timestamp: new Date(point.measured_at).getTime(),
-    weight: Number(point.weight_kg),
-    average: point.moving_average_7d_kg === null ? null : Number(point.moving_average_7d_kg),
-  }));
+export function WeightChart({
+  points,
+  targetWeight,
+  timezone,
+  range,
+  today,
+  isLoading = false,
+  onRangeCommit,
+  onSelect,
+}: WeightChartProps) {
+  const data: ChartDatum[] = points
+    .map((point) => ({
+      ...point,
+      timestamp: timestampInTimezone(point.measured_at, timezone),
+      weight: Number(point.weight_kg),
+      average: point.moving_average_7d_kg === null ? null : Number(point.moving_average_7d_kg),
+    }))
+    .sort((left, right) => left.timestamp - right.timestamp);
   const target = targetWeight === null ? null : Number(targetWeight);
   const domain = yDomain(data, target);
+  const [previewRange, setPreviewRange] = useState(range);
+  const [gestureActive, setGestureActive] = useState(false);
+  const [selectedPoint, setSelectedPoint] = useState<ChartDatum | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
+  const pointersRef = useRef(new Map<number, ActivePointer>());
+  const gestureRef = useRef<ActiveGesture | null>(null);
+  const previewRef = useRef(range);
+  const suppressClickRef = useRef(false);
+
+  useEffect(() => () => {
+    const plot = plotRef.current;
+    if (plot) {
+      for (const pointerId of pointersRef.current.keys()) {
+        if (plot.hasPointerCapture?.(pointerId)) plot.releasePointerCapture(pointerId);
+      }
+    }
+    pointersRef.current.clear();
+    gestureRef.current = null;
+  }, []);
+
+  const setPreview = (next: WeightDateRange) => {
+    previewRef.current = next;
+    setPreviewRange(next);
+  };
+
+  const finishGesture = (commit: boolean) => {
+    const gesture = gestureRef.current;
+    if (commit && gesture && (gesture.kind === "horizontal" || gesture.kind === "pinch")) {
+      suppressClickRef.current = true;
+      setSelectedPoint(null);
+      if (!isSameWeightRange(previewRef.current, range)) onRangeCommit(previewRef.current);
+    } else if (!commit) {
+      setPreview(range);
+    }
+    const plot = plotRef.current;
+    if (plot) {
+      for (const pointerId of pointersRef.current.keys()) {
+        if (plot.hasPointerCapture?.(pointerId)) plot.releasePointerCapture(pointerId);
+      }
+    }
+    pointersRef.current.clear();
+    gestureRef.current = null;
+    setGestureActive(false);
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 && event.pointerType === "mouse") return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const bounds = event.currentTarget.getBoundingClientRect();
+
+    if (pointersRef.current.size === 1) {
+      gestureRef.current = {
+        kind: "pending",
+        initialRange: range,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        pinchDistance: 0,
+        pinchMidpointRatio: 0.5,
+      };
+      suppressClickRef.current = false;
+      return;
+    }
+
+    const [first, second] = [...pointersRef.current.values()];
+    gestureRef.current = {
+      kind: "pinch",
+      initialRange: previewRef.current,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      pinchDistance: Math.max(pointerDistance(first, second), 1),
+      pinchMidpointRatio: Math.min(1, Math.max(0, ((first.x + second.x) / 2 - bounds.left) / Math.max(bounds.width, 1))),
+    };
+    setGestureActive(true);
+    event.preventDefault();
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const gesture = gestureRef.current;
+    if (!gesture) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+
+    if (gesture.kind === "pinch" && pointersRef.current.size >= 2) {
+      const [first, second] = [...pointersRef.current.values()];
+      const scale = pointerDistance(first, second) / gesture.pinchDistance;
+      setPreview(zoomWeightRange(gesture.initialRange, scale, gesture.pinchMidpointRatio, today));
+      event.preventDefault();
+      return;
+    }
+
+    if (event.pointerId !== gesture.pointerId || pointersRef.current.size !== 1) return;
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+    if (gesture.kind === "pending") {
+      gesture.kind = gestureDirection(deltaX, deltaY);
+      if (gesture.kind === "horizontal") setGestureActive(true);
+    }
+    if (gesture.kind === "horizontal") {
+      setPreview(panWeightRange(gesture.initialRange, deltaX, bounds.width, today));
+      event.preventDefault();
+    }
+  };
+
+  const handlePointClick = (event: ReactMouseEvent<SVGGElement>, point: ChartDatum) => {
+    event.stopPropagation();
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setSelectedPoint(point);
+  };
+
   const renderDot = (rawProps: unknown) => {
     const { cx, cy, payload } = rawProps as ChartDotProps;
     if (cx === undefined || cy === undefined || !payload) return <g />;
-    const select = () => onSelect(payload);
     return (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={5}
-        className="weight-chart-dot"
+      <g
+        className="weight-chart-point"
         role="button"
         tabIndex={0}
         aria-label={`${formatDate(payload.measured_at, timezone, true)}: ${payload.weight_kg} кг`}
-        onClick={select}
+        onClick={(event) => handlePointClick(event, payload)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            select();
+            setSelectedPoint(payload);
           }
         }}
-      />
+      >
+        <circle cx={cx} cy={cy} r={23} className="weight-chart-hit-area" />
+        <circle cx={cx} cy={cy} r={5} className="weight-chart-dot" />
+      </g>
     );
   };
+  const days = inclusiveDayCount(previewRange);
+  const tickCount = days <= 14 ? 4 : days <= 90 ? 5 : 6;
 
   return (
     <>
-      <div className="weight-chart" role="group" aria-label="График изменения веса">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 12, right: 12, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 5" vertical={false} />
-            <XAxis
-              dataKey="timestamp"
-              type="number"
-              scale="time"
-              domain={["dataMin", "dataMax"]}
-              tickFormatter={(value: number) => formatDate(new Date(value).toISOString(), timezone)}
-              minTickGap={28}
-              tickLine={false}
-              axisLine={false}
-              fontSize={11}
-            />
-            <YAxis
-              domain={domain}
-              width={42}
-              tickFormatter={(value: number) => value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}
-              tickLine={false}
-              axisLine={false}
-              fontSize={11}
-            />
-            <Tooltip content={(props) => <ChartTooltip state={props} timezone={timezone} />} cursor={{ stroke: "var(--color-text-secondary)", strokeDasharray: "3 4" }} />
-            {target !== null && <ReferenceLine y={target} stroke="var(--color-energy)" strokeDasharray="6 5" label={{ value: "Цель", position: "insideTopRight", fill: "var(--color-text-secondary)", fontSize: 11 }} />}
-            <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--color-text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
-            <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--color-action-primary)" strokeWidth={3} dot={renderDot} activeDot={{ r: 7 }} isAnimationActive={false} />
-          </LineChart>
-        </ResponsiveContainer>
+      <div
+        ref={plotRef}
+        className={`weight-chart ${gestureActive ? "is-gesturing" : ""}`}
+        role="group"
+        aria-label="Интерактивный график изменения веса"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={() => finishGesture(true)}
+        onPointerCancel={() => finishGesture(false)}
+      >
+        <div className="weight-chart__canvas">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 16, right: 12, bottom: 8, left: 0 }}>
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 5" vertical={false} />
+              <XAxis
+                dataKey="timestamp"
+                type="number"
+                scale="time"
+                domain={[chartBoundary(previewRange.from), chartBoundary(previewRange.to, true)]}
+                tickCount={tickCount}
+                tickFormatter={(value: number) => formatDate(new Date(value).toISOString(), "UTC")}
+                minTickGap={22}
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                allowDataOverflow
+              />
+              <YAxis
+                domain={domain}
+                width={42}
+                tickCount={5}
+                tickFormatter={(value: number) => value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+              />
+              {!selectedPoint && <Tooltip content={(props) => <ChartTooltip state={props} timezone={timezone} />} cursor={{ stroke: "var(--color-text-secondary)", strokeDasharray: "3 4" }} />}
+              {target !== null && <ReferenceLine y={target} stroke="var(--color-energy)" strokeDasharray="6 5" label={{ value: "Цель", position: "insideTopRight", fill: "var(--color-text-secondary)", fontSize: 11 }} />}
+              <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--color-text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--color-action-primary)" strokeWidth={3} dot={renderDot} activeDot={{ r: 7 }} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        {selectedPoint && (
+          <div className="weight-tooltip weight-tooltip--selected" role="status">
+            <span>{formatDate(selectedPoint.measured_at, timezone, true)}</span>
+            <strong>{selectedPoint.weight.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</strong>
+            {selectedPoint.average !== null && <small>Среднее: {selectedPoint.average.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</small>}
+            <button type="button" onClick={() => onSelect(selectedPoint)}><Pencil aria-hidden="true" /> Изменить</button>
+          </div>
+        )}
+        {isLoading && <div className="weight-chart__loading" role="status" aria-live="polite"><span />Обновляем период</div>}
       </div>
-      <p className="chart-accessible-summary">
-        {points.length === 1
-          ? `Одно измерение: ${points[0].weight_kg} кг, ${formatDate(points[0].measured_at, timezone, true)}.`
-          : `${points.length} измерений с ${formatDate(points[0].measured_at, timezone)} по ${formatDate(points.at(-1)!.measured_at, timezone)}.`}
-      </p>
+      <p className="chart-accessible-summary">{accessibleSummary(data, timezone)}</p>
     </>
   );
 }

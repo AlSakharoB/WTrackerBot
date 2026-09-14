@@ -50,12 +50,22 @@ describe("UI audit fixtures", () => {
     expect(ingredients.every((item) => Object.values(item.nutrition_per_100g).every((value) => typeof value === "string"))).toBe(true);
   });
 
+  it("provides distinct weight chart and goal states", () => {
+    expect(createFixtures("light", "weight-single")["/weight"].points).toHaveLength(1);
+    expect(createFixtures("light", "weight-two")["/weight"].points).toHaveLength(2);
+    expect(createFixtures("light", "weight-achieved")["/weight"].goal.progress.achieved).toBe(true);
+    expect(Number(createFixtures("light", "weight-gain")["/weight"].goal.target_weight_kg)).toBeGreaterThan(80);
+    expect(createFixtures("light", "weight-no-start")["/weight"].goal.progress).toBeNull();
+  });
+
   it("does not fabricate responses for unknown mutations", () => {
     expect(mutationResponse("/account/deletion-confirm", "populated")).toBeUndefined();
     expect(mutationResponse("/unknown", "populated")).toBeUndefined();
     const missing = mutationResponse("/barcodes/lookup", "barcode-missing");
-    expect(missing.found).toBe(false);
+    expect(missing.found).toBe(true);
     expect(missing.nutrition_per_100g.protein_g).toBeNull();
-    expect(mutationResponse("/barcodes/lookup", "populated").confirmation_token).toBe("AUDIT_ONLY");
+    const notFound = mutationResponse("/barcodes/lookup", "barcode-not-found");
+    expect(notFound.found).toBe(false);
+    expect(mutationResponse("/barcodes/lookup", "populated").confirmation_token).toBe("AUDIT_ONLY_CONFIRMATION_TOKEN");
   });
 });

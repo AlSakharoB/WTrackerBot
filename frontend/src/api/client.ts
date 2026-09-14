@@ -402,7 +402,12 @@ export type UIPreferencesUpdate = Partial<
 >;
 
 interface ErrorEnvelope {
-  error?: { message?: string; correlation_id?: string; details?: Record<string, unknown> };
+  error?: {
+    message?: string;
+    correlation_id?: string;
+    details?: Record<string, unknown>;
+    field_errors?: Record<string, string>;
+  };
 }
 
 export class APIError extends Error {
@@ -411,6 +416,7 @@ export class APIError extends Error {
     public readonly status: number,
     public readonly correlationId?: string,
     public readonly details?: Record<string, unknown>,
+    public readonly fieldErrors?: Record<string, string>,
   ) {
     super(message);
   }
@@ -427,6 +433,7 @@ export async function fetchCurrentUser(initData: string): Promise<CurrentUser> {
       response.status,
       payload.error?.correlation_id,
       payload.error?.details,
+      payload.error?.field_errors,
     );
   }
   return (await response.json()) as CurrentUser;
@@ -440,6 +447,7 @@ async function parseResponse<T>(response: Response, fallback: string): Promise<T
       response.status,
       payload.error?.correlation_id,
       payload.error?.details,
+      payload.error?.field_errors,
     );
   }
   return (await response.json()) as T;

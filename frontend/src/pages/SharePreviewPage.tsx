@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, CookingPot, Download, Salad } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, CookingPot, Download, Salad } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -59,8 +59,10 @@ export function SharePreviewPage() {
         <>
           <header className="share-preview-heading">
             <span>{preview.data.type === "dishes" ? <CookingPot aria-hidden="true" /> : <Salad aria-hidden="true" />}</span>
-            <div><h1>{preview.data.type === "dishes" ? "Пакет блюд" : "Пакет ингредиентов"}</h1><p>{preview.data.item_count} элементов</p></div>
+            <div><small>Предпросмотр обмена</small><h1>{preview.data.type === "dishes" ? "Пакет блюд" : "Пакет ингредиентов"}</h1><p>{preview.data.item_count} элементов</p></div>
           </header>
+          <div className="share-preview-expiry"><CalendarClock aria-hidden="true" /><span>Ссылка действует до {new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(preview.data.expires_at))}</span></div>
+          <div className="share-preview-list-heading"><h2>Что будет добавлено</h2><span>Совпадения отмечены отдельно</span></div>
           <section className="share-preview-list" aria-label="Содержимое пакета">
             {preview.data.dishes.map((dish) => <div className="share-preview-row" key={dish.key}><CookingPot aria-hidden="true" /><div><strong>{dish.name}</strong>{dish.conflict_type !== "new" && <small>Будет создана копия</small>}</div></div>)}
             {preview.data.ingredients.map((ingredient) => <IngredientRow key={ingredient.key} item={ingredient} />)}
@@ -68,11 +70,11 @@ export function SharePreviewPage() {
           {preview.data.already_imported ? (
             <div className="import-complete"><CheckCircle2 aria-hidden="true" /><span>Пакет уже импортирован</span></div>
           ) : preview.data.is_owner ? (
-            <p className="form-error">Нельзя импортировать собственную ссылку.</p>
+            <p className="form-error" role="alert">Это ваша ссылка. Импортировать собственный пакет нельзя.</p>
           ) : (
             <button type="button" className="button-primary button-with-icon import-button" disabled={importMutation.isPending} onClick={() => importMutation.mutate()}><Download aria-hidden="true" />{importMutation.isPending ? "Импортируем..." : "Импортировать"}</button>
           )}
-          {importMutation.error && <p className="form-error">{importMutation.error.message}</p>}
+          {importMutation.error && <p className="form-error" role="alert">{importMutation.error.message}</p>}
         </>
       ) : null}
     </div>

@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { CircleAlert, Inbox } from "lucide-react";
+import { CircleAlert, Inbox, LoaderCircle } from "lucide-react";
+import type { ReactNode } from "react";
 
 interface EmptyStateProps {
   title: string;
@@ -55,5 +56,40 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
         <span aria-hidden="true" key={index} />
       ))}
     </div>
+  );
+}
+
+interface ProductStateProps {
+  title: string;
+  message: string;
+  icon?: LucideIcon;
+  eyebrow?: string;
+  action?: ReactNode;
+  tone?: "default" | "error" | "success";
+  busy?: boolean;
+  contained?: boolean;
+}
+
+export function ProductState({
+  title,
+  message,
+  icon: Icon = Inbox,
+  eyebrow = "WTrackerBot",
+  action,
+  tone = "default",
+  busy = false,
+  contained = false,
+}: ProductStateProps) {
+  const StateIcon = busy ? LoaderCircle : Icon;
+  return (
+    <main className={`product-state ${contained ? "is-contained" : ""}`} aria-busy={busy || undefined}>
+      <section role={tone === "error" ? "alert" : "status"}>
+        <span className={`product-state__mark is-${tone} ${busy ? "is-busy" : ""}`}><StateIcon aria-hidden="true" /></span>
+        <p className="eyebrow">{eyebrow}</p>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        {action && <div className="product-state__action">{action}</div>}
+      </section>
+    </main>
   );
 }

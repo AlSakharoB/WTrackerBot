@@ -34,6 +34,7 @@ interface RationEntrySheetProps {
   format: NumberFormat;
   initData: string;
   authorized: boolean;
+  confirmDeletions?: boolean;
   formatValue: (value: string | number, format: NumberFormat) => string;
   onClose: () => void;
   onChanged: (affectedDate?: string) => void;
@@ -46,6 +47,7 @@ export function RationEntrySheet({
   format,
   initData,
   authorized,
+  confirmDeletions = true,
   formatValue,
   onClose,
   onChanged,
@@ -136,7 +138,7 @@ export function RationEntrySheet({
               <div className="entry-actions">
                 <button type="button" onClick={() => setMode("edit")}><Pencil aria-hidden="true" /><span>Изменить</span></button>
                 <button type="button" onClick={() => setMode("copy")}><Copy aria-hidden="true" /><span>Копировать</span></button>
-                <button type="button" className="is-danger" onClick={() => setConfirmDelete(true)}><Trash2 aria-hidden="true" /><span>Удалить</span></button>
+                <button type="button" className="is-danger" onClick={() => { if (confirmDeletions) setConfirmDelete(true); else if (authorized && !deleteMutation.isPending) deleteMutation.mutate(); }}><Trash2 aria-hidden="true" /><span>Удалить</span></button>
               </div>
             </>
           ) : (

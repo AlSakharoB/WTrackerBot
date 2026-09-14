@@ -6,6 +6,6 @@ export { IconButton } from "./IconButton";
 export { MetricTile } from "./MetricTile";
 export { ProgressBar } from "./ProgressBar";
 export { SegmentedControl } from "./SegmentedControl";
-export { EmptyState, ErrorState, Skeleton } from "./States";
+export { EmptyState, ErrorState, ProductState, Skeleton } from "./States";
 export { ToastProvider } from "./Toast";
 export { useToast } from "./toast-context";

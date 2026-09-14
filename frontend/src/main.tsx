@@ -10,6 +10,10 @@ import "./styles/shell.css";
 import "./styles/components.css";
 import "./styles.css";
 import "./styles/pages/ration.css";
+import "./styles/pages/food.css";
+import "./styles/pages/weight.css";
+import "./styles/pages/profile.css";
+import "./styles/pages/system.css";
 import { createTelegramAdapter } from "./telegram/adapter";
 
 const telegram = createTelegramAdapter();

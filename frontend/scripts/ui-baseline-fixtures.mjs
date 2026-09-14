@@ -23,6 +23,11 @@ export const ingredients = [
   folder_id: folder, package_weight_g: i === 0 ? "150" : null,
   photo_url: null, source_name: null, source_url: null, ...timestamps,
 }));
+export const longIngredients = Array.from({ length: 32 }, (_, i) => ({
+  ...ingredients[i % ingredients.length],
+  id: `long-ingredient-${i + 1}`,
+  name: `${ingredients[i % ingredients.length].name} ${i + 1}`,
+}));
 export const dishes = [{
   id: "dish-1", name: "Овсянка с йогуртом и бананом", total_weight_g: "300",
   nutrition_total: nutrition(367, 13.6, 7.55, 62.65),
@@ -62,6 +67,24 @@ const weightGoal = {
 
 export function createFixtures(theme, state = "populated") {
   const empty = state === "empty";
+  const weightPoints = empty
+    ? []
+    : state === "weight-single"
+      ? points.slice(-1)
+      : state === "weight-two"
+        ? points.slice(-2)
+        : points;
+  const currentWeight = weightPoints.at(-1) ?? null;
+  const previousWeight = weightPoints.at(-2) ?? null;
+  const activeWeightGoal = empty
+    ? null
+    : state === "weight-achieved"
+      ? { ...weightGoal, target_weight_kg: currentWeight.weight_kg, current_weight_kg: currentWeight.weight_kg, progress: { percentage: "100", completed_kg: "2.93", remaining_kg: "0", achieved: true } }
+      : state === "weight-gain"
+        ? { ...weightGoal, start_weight_kg: "78", target_weight_kg: "86", current_weight_kg: currentWeight.weight_kg, progress: { percentage: "38.38", completed_kg: "3.07", remaining_kg: "4.93", achieved: false } }
+        : state === "weight-no-start"
+          ? { ...weightGoal, start_weight_kg: null, current_weight_kg: currentWeight.weight_kg, progress: null }
+          : weightGoal;
   const rationEntries = empty ? [] : structuredClone(state === "single" ? entries.slice(0, 1) : entries);
   if (state === "deleted-source") Object.assign(rationEntries[0], { source_id: null, source_available: false });
   const totals = sum(rationEntries.map((entry) => entry.nutrition));
@@ -96,12 +119,14 @@ export function createFixtures(theme, state = "populated") {
     "/ration/sources": { items: empty ? [] : [...ingredients, ...dishes].map((item) => ({ id: item.id, type: item.components ? "dish" : "ingredient", name: item.name, default_grams: "100", nutrition_per_100g: item.nutrition_per_100g, usage_count: 4, last_used_at: NOW })) },
     "/weight": {
       timezone: user.timezone, date_from: "2026-08-15", date_to: TODAY,
-      current: empty ? null : points.at(-1), previous: empty ? null : points.at(-2),
-      change_from_previous_kg: empty ? null : "0.04", period_change_kg: empty ? null : "-1.28",
-      minimum_kg: empty ? null : "81.07", maximum_kg: empty ? null : "82.44",
-      goal: empty ? null : weightGoal, points: empty ? [] : points, history: empty ? [] : [...points].reverse(),
+      current: currentWeight, previous: previousWeight,
+      change_from_previous_kg: previousWeight ? String(Number(currentWeight.weight_kg) - Number(previousWeight.weight_kg)) : null,
+      period_change_kg: weightPoints.length > 1 ? String(Number(currentWeight.weight_kg) - Number(weightPoints[0].weight_kg)) : null,
+      minimum_kg: weightPoints.length ? String(Math.min(...weightPoints.map((point) => Number(point.weight_kg)))) : null,
+      maximum_kg: weightPoints.length ? String(Math.max(...weightPoints.map((point) => Number(point.weight_kg)))) : null,
+      goal: activeWeightGoal, points: weightPoints, history: [...weightPoints].reverse(),
     },
-    "/goals/weight": empty ? null : weightGoal,
+    "/goals/weight": activeWeightGoal,
     "/ingredients": { items: empty ? [] : ingredients, next_cursor: null },
     "/dishes": { items: empty ? [] : dishes, next_cursor: null },
     "/food-folders": { items: empty ? [] : folders },
@@ -118,11 +143,11 @@ export function mutationResponse(path, state) {
   if (path === "/sharing/packages") return { id: "audit-package", type: "ingredients", item_count: 1, deep_link: "https://t.me/example_bot?start=share_AUDIT_NOT_A_REAL_TOKEN", telegram_share_url: "https://t.me/share/url?url=AUDIT", expires_at: "2026-10-01T00:00:00Z" };
   if (path === "/account/deletion-request") return { confirmation_token: "AUDIT_ONLY", confirmation_phrase: "УДАЛИТЬ МОИ ДАННЫЕ", expires_at: "2026-09-13T09:10:00Z" };
   if (path === "/barcodes/lookup") return {
-    barcode: "1234567890128", found: state !== "barcode-missing", name: state === "barcode-missing" ? null : ingredients[0].name,
+    barcode: "1234567890128", found: state !== "barcode-not-found", name: ["barcode-missing", "barcode-not-found"].includes(state) ? null : ingredients[0].name,
     brand: "Тестовая марка", package_weight_g: "150", package_quantity: "150 г", package_quantity_unit: "g", serving_size: null,
-    nutrition_per_100g: state === "barcode-missing" ? { energy_kcal: null, protein_g: null, fat_g: null, carbs_g: null } : ingredients[0].nutrition_per_100g,
-    photo_url: null, missing_fields: state === "barcode-missing" ? ["name", "energy_kcal", "protein_g", "fat_g", "carbs_g", "photo_url"] : ["photo_url"],
-    derived_fields: [], source: "open_food_facts", source_url: "https://world.openfoodfacts.org/product/1234567890128", confirmation_token: "AUDIT_ONLY",
+    nutrition_per_100g: ["barcode-missing", "barcode-not-found"].includes(state) ? { energy_kcal: null, protein_g: null, fat_g: null, carbs_g: null } : ingredients[0].nutrition_per_100g,
+    photo_url: null, missing_fields: ["barcode-missing", "barcode-not-found"].includes(state) ? ["name", "energy_kcal", "protein_g", "fat_g", "carbs_g", "photo_url"] : ["photo_url"],
+    derived_fields: state === "barcode-derived" ? ["energy_kcal"] : [], source: "open_food_facts", source_url: "https://world.openfoodfacts.org/product/1234567890128", confirmation_token: "AUDIT_ONLY_CONFIRMATION_TOKEN",
   };
   return undefined;
 }

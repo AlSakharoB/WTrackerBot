@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Check, FolderPlus, Pencil, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, FolderPlus, GripVertical, Pencil, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 import {
@@ -15,6 +15,7 @@ interface FolderManagerSheetProps {
   open: boolean;
   initData: string;
   folders: FoodFolder[];
+  confirmDeletions?: boolean;
   onClose: () => void;
 }
 
@@ -26,6 +27,7 @@ export function FolderManagerSheet({
   open,
   initData,
   folders,
+  confirmDeletions = true,
   onClose,
 }: FolderManagerSheetProps) {
   const queryClient = useQueryClient();
@@ -34,6 +36,7 @@ export function FolderManagerSheet({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [deleting, setDeleting] = useState<FoodFolder | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const createKey = useRef(mutationKey());
 
   const refresh = async () => {
@@ -58,7 +61,7 @@ export function FolderManagerSheet({
     },
   });
   const remove = useMutation({
-    mutationFn: () => deleteFoodFolder(initData, deleting!.id),
+    mutationFn: (folder?: FoodFolder) => deleteFoodFolder(initData, (folder ?? deleting)!.id),
     onSuccess: async () => {
       setDeleting(null);
       await refresh();
@@ -75,6 +78,15 @@ export function FolderManagerSheet({
     if (target < 0 || target >= folders.length) return;
     const ids = folders.map((folder) => folder.id);
     [ids[index], ids[target]] = [ids[target], ids[index]];
+    reorder.mutate(ids);
+  };
+  const moveTo = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId || reorder.isPending) return;
+    const ids = folders.map((folder) => folder.id);
+    const source = ids.indexOf(sourceId);
+    const target = ids.indexOf(targetId);
+    if (source < 0 || target < 0) return;
+    ids.splice(target, 0, ids.splice(source, 1)[0]);
     reorder.mutate(ids);
   };
   const error = create.error ?? rename.error ?? remove.error ?? reorder.error;
@@ -96,7 +108,15 @@ export function FolderManagerSheet({
 
         <div className="folder-manager-list">
           {folders.map((folder, index) => (
-            <div className="folder-manager-row" key={folder.id}>
+            <div
+              className={`folder-manager-row ${draggingId === folder.id ? "is-dragging" : ""}`}
+              key={folder.id}
+              draggable={editingId !== folder.id && !reorder.isPending}
+              onDragStart={(event) => { setDraggingId(folder.id); event.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(event) => { if (draggingId && draggingId !== folder.id) event.preventDefault(); }}
+              onDrop={(event) => { event.preventDefault(); if (draggingId) moveTo(draggingId, folder.id); setDraggingId(null); }}
+              onDragEnd={() => setDraggingId(null)}
+            >
               {editingId === folder.id ? (
                 <form onSubmit={(event) => { event.preventDefault(); if (editingName.trim()) rename.mutate(); }}>
                   <label className="sr-only" htmlFor={`folder-${folder.id}`}>Название папки</label>
@@ -105,21 +125,22 @@ export function FolderManagerSheet({
                   <button type="button" aria-label="Отменить переименование" title="Отменить" onClick={() => setEditingId(null)}><X aria-hidden="true" /></button>
                 </form>
               ) : (
-                <div className="folder-manager-row__name"><strong>{folder.name}</strong><small>{folder.item_count} поз.</small></div>
+                <div className="folder-manager-row__name"><GripVertical aria-hidden="true" /><span><strong>{folder.name}</strong><small>{folder.item_count} поз.</small></span></div>
               )}
               {editingId !== folder.id && (
                 <div className="folder-manager-row__actions">
                   <button type="button" aria-label={`Переместить ${folder.name} выше`} title="Выше" disabled={index === 0 || reorder.isPending} onClick={() => move(index, -1)}><ArrowUp aria-hidden="true" /></button>
                   <button type="button" aria-label={`Переместить ${folder.name} ниже`} title="Ниже" disabled={index === folders.length - 1 || reorder.isPending} onClick={() => move(index, 1)}><ArrowDown aria-hidden="true" /></button>
                   <button type="button" aria-label={`Переименовать ${folder.name}`} title="Переименовать" onClick={() => { setEditingId(folder.id); setEditingName(folder.name); }}><Pencil aria-hidden="true" /></button>
-                  <button type="button" className="is-danger" aria-label={`Удалить ${folder.name}`} title="Удалить" onClick={() => setDeleting(folder)}><Trash2 aria-hidden="true" /></button>
+                  <button type="button" className="is-danger" aria-label={`Удалить ${folder.name}`} title="Удалить" onClick={() => { if (confirmDeletions) setDeleting(folder); else remove.mutate(folder); }}><Trash2 aria-hidden="true" /></button>
                 </div>
               )}
             </div>
           ))}
           {folders.length === 0 && <p className="folder-empty">Создайте папку, чтобы сгруппировать продукты и блюда.</p>}
         </div>
-        {error && <p className="form-error">{error.message}</p>}
+        {reorder.isPending && <p className="folder-manager-status" role="status">Сохраняем порядок...</p>}
+        {error && <p className="form-error" role="alert">{error.message}</p>}
       </BottomSheet>
       <ConfirmDialog
         open={deleting !== null}

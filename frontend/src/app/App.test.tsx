@@ -56,10 +56,10 @@ describe("Mini App routes", () => {
     expect(await screen.findByText(heading)).toBeInTheDocument();
   });
 
-  it("restores the last primary section from local storage", async () => {
+  it("uses the configured default section instead of stale local history", async () => {
     localStorage.setItem("miniapp:last-section", "weight");
     renderApp("/");
-    expect(await screen.findByText("Текущий вес")).toBeInTheDocument();
+    expect(await screen.findByText("Баланс КБЖУ")).toBeInTheDocument();
   });
 
   it("moves through bottom navigation and stores the selected section", () => {
@@ -195,11 +195,58 @@ describe("Mini App routes", () => {
     expect(screen.getByRole("button", { name: "Показать" })).toBeDisabled();
   });
 
+  it("offers button controls for the interactive weight window", async () => {
+    renderApp("/weight");
+
+    const next = await screen.findByRole("button", { name: "Следующий период" });
+    const reset = screen.getByRole("button", { name: "Вернуться к текущему периоду" });
+    expect(next).toBeDisabled();
+    expect(reset).toBeDisabled();
+    expect(screen.getAllByText("30 дней")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Предыдущий период" }));
+    expect(next).toBeEnabled();
+    expect(reset).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Приблизить график" }));
+    expect(screen.getByText("20 дней")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Период графика" })).toHaveValue("custom");
+
+    fireEvent.click(reset);
+    expect(screen.getByRole("button", { name: "Вернуться к текущему периоду" })).toBeDisabled();
+  });
+
+  it("rejects short chart windows and future weight measurements", async () => {
+    renderApp("/weight");
+    fireEvent.change(await screen.findByRole("combobox", { name: "Период графика" }), {
+      target: { value: "custom" },
+    });
+    const [from, to] = screen.getAllByDisplayValue(/\d{4}-\d{2}-\d{2}/);
+    fireEvent.change(from, { target: { value: "2026-09-10" } });
+    fireEvent.change(to, { target: { value: "2026-09-14" } });
+    expect(screen.getByText("Период не может быть короче 7 дней")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Записать" }));
+    fireEvent.change(screen.getByLabelText("Дата и время"), { target: { value: "2099-01-01T12:00" } });
+    expect(screen.getByText("Дата измерения не может быть в будущем")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+  });
+
   it("switches the preview theme from profile settings", () => {
     renderApp("/profile");
+    fireEvent.click(screen.getByRole("button", { name: /ТемаСистемная/ }));
     fireEvent.click(screen.getByRole("button", { name: "Темная" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.themeMode).toBe("dark");
+  });
+
+  it("keeps profile forms collapsed until their setting is opened", () => {
+    renderApp("/profile");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText(/Фактические КБЖУ в рационе все равно отображаются/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Настроить" }));
+    expect(screen.getByRole("dialog", { name: "Цели питания" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Белки, г")).toBeInTheDocument();
   });
 
   it("marks a future ration date explicitly", () => {

@@ -1,0 +1,42 @@
+.product-state { width: 100%; min-height: var(--app-stable-height); display: grid; place-items: center; padding: 28px 18px; color: var(--color-text-primary); background: var(--color-background); }
+.product-state.is-contained { min-height: 360px; padding: 30px 16px; }
+.product-state > section { width: min(100%, 480px); text-align: center; }
+.product-state__mark { width: 52px; height: 52px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: var(--radius-control); color: var(--color-action-primary); background: var(--color-action-soft); }
+.product-state__mark svg { width: 25px; height: 25px; }
+.product-state__mark.is-error { color: var(--color-danger); background: var(--color-danger-soft); }
+.product-state__mark.is-success { color: var(--color-success); background: color-mix(in srgb, var(--color-success) 12%, transparent); }
+.product-state__mark.is-busy svg { animation: product-state-spin 1s linear infinite; }
+.product-state h1 { margin: 7px 0 9px; font-size: 24px; line-height: 1.2; }
+.product-state section > p:not(.eyebrow) { max-width: 420px; margin: 0 auto; color: var(--color-text-secondary); font-size: 14px; line-height: 1.55; }
+.product-state__action { display: flex; justify-content: center; margin-top: 20px; }
+.product-state__action a { display: inline-flex; align-items: center; text-decoration: none; }
+@keyframes product-state-spin { to { transform: rotate(360deg); } }
+
+.page--system-state { display: grid; place-items: center; }
+.policy-page { min-height: 100dvh; padding: 28px 18px 50px; color: var(--color-text-primary); background: var(--color-background); }
+.policy-page article { width: min(100%, 680px); margin: 0 auto; }
+.policy-back { min-height: 44px; display: inline-flex; align-items: center; gap: 7px; margin-bottom: 24px; color: var(--color-link); text-decoration: none; font-weight: 700; }
+.policy-page h1 { max-width: 620px; margin: 7px 0 12px; font-size: 27px; line-height: 1.2; }
+.policy-lead { max-width: 650px; margin-bottom: 28px; color: var(--color-text-secondary); font-size: 15px; line-height: 1.55; }
+.policy-page section { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 19px 0; border-top: 1px solid var(--color-border); }
+.policy-page section > svg { color: var(--color-action-primary); }
+.policy-page h2 { margin-bottom: 6px; font-size: 16px; }
+.policy-page section p, .policy-note { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.55; }
+.policy-note { padding-top: 20px; border-top: 1px solid var(--color-border); }
+
+.share-preview-page { display: grid; gap: 16px; }
+.share-preview-heading { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 4px 0 15px; border-bottom: 1px solid var(--color-border); }
+.share-preview-heading > span { width: 44px; height: 44px; flex: 0 0 44px; display: grid; place-items: center; border-radius: var(--radius-control); color: var(--color-action-primary); background: var(--color-action-soft); }
+.share-preview-heading > div { min-width: 0; }
+.share-preview-heading h1 { margin: 2px 0; overflow-wrap: anywhere; font-size: 19px; }
+.share-preview-heading p { margin: 0; color: var(--color-text-secondary); font-size: 12px; }
+.share-preview-expiry { min-width: 0; }
+.share-preview-list { border-top: 1px solid var(--color-border); }
+.share-preview-row { min-width: 0; }
+.import-complete { border-left: 3px solid var(--color-success); }
+
+@media (max-width: 350px) {
+  .product-state { padding-inline: 14px; }
+  .product-state h1 { font-size: 22px; }
+  .policy-page { padding-inline: 14px; }
+}

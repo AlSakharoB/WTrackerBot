@@ -133,4 +133,53 @@ describe("ration entry flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Загрузить актуальную" }));
     await waitFor(() => expect(onConflictRefresh).toHaveBeenCalledWith(entry.id));
   });
+
+  it("resets the picker for another entry when stay mode is enabled", async () => {
+    vi.mocked(api.createRationEntry).mockResolvedValue(entry);
+    const onSaved = vi.fn();
+    renderFlow(
+      <RationAddSheet
+        open
+        date="2026-09-13"
+        initialMeal="breakfast"
+        format="automatic"
+        initData="test-init-data"
+        authorized
+        stayOpenAfterSave
+        formatValue={(value) => String(value)}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Йогурт натуральный/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить в завтрак" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(screen.getByPlaceholderText("Найти ингредиент или блюдо")).toBeInTheDocument();
+  });
+
+  it("deletes an entry immediately when confirmations are disabled", async () => {
+    vi.mocked(api.deleteRationEntry).mockResolvedValue(undefined);
+    const onChanged = vi.fn();
+    renderFlow(
+      <RationEntrySheet
+        entry={entry}
+        currentDate="2026-09-13"
+        format="automatic"
+        initData="test-init-data"
+        authorized
+        confirmDeletions={false}
+        formatValue={(value) => String(value)}
+        onClose={vi.fn()}
+        onChanged={onChanged}
+        onConflictRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(api.deleteRationEntry).toHaveBeenCalledWith("test-init-data", entry.id));
+    expect(onChanged).toHaveBeenCalledOnce();
+  });
 });

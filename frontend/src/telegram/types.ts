@@ -27,6 +27,7 @@ export interface TelegramWebApp {
   readonly BackButton?: TelegramBackButton;
   ready(): void;
   expand(): void;
+  close?(): void;
   onEvent(event: TelegramEvent, callback: () => void): void;
   offEvent(event: TelegramEvent, callback: () => void): void;
 }
