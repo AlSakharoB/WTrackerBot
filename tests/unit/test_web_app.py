@@ -19,6 +19,7 @@ def make_settings(**overrides: object) -> Settings:
         "bot_token": BOT_TOKEN,
         "database_url": "postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
         "app_version": "0.2.0",
+        "miniapp_enabled": True,
         "_env_file": None,
     }
     values.update(overrides)
@@ -42,6 +43,34 @@ async def test_healthcheck_is_public() -> None:
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-correlation-id"]
+
+
+async def test_disabled_miniapp_keeps_health_public_and_blocks_api() -> None:
+    app = create_web_app(make_settings(miniapp_enabled=False))
+    async with make_client(app) as client:
+        health_response = await client.get("/internal/healthz")
+        api_response = await client.get("/api/v1/me")
+
+    assert health_response.status_code == 200
+    assert api_response.status_code == 503
+    assert api_response.headers["retry-after"] == "60"
+    assert api_response.json()["error"]["code"] == "miniapp_disabled"
+
+
+async def test_miniapp_allowlist_uses_only_signed_telegram_id() -> None:
+    app = create_web_app(
+        make_settings(miniapp_allowed_telegram_ids={987654321}),
+    )
+    async with make_client(app) as client:
+        response = await client.get(
+            "/api/v1/me?telegram_id=987654321",
+            headers={
+                "Authorization": (f"tma {sign_init_data(auth_date=datetime.now(UTC))}")
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "miniapp_not_available"
 
 
 async def test_me_requires_telegram_authorization() -> None:

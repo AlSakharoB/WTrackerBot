@@ -56,6 +56,7 @@ async def test_barcode_lookup_cache_confirmation_creation_and_duplicate(
         bot_token=BOT_TOKEN,
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
         barcode_rate_limit_count=100,
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)

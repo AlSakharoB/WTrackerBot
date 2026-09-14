@@ -13,7 +13,11 @@ from app.web.auth import (
     TelegramInitDataValidator,
     ValidatedInitData,
 )
-from app.web.errors import AuthenticationError
+from app.web.errors import (
+    AuthenticationError,
+    MiniAppDisabledError,
+    MiniAppUnavailableError,
+)
 
 
 def get_web_settings(request: Request) -> Settings:
@@ -30,6 +34,9 @@ def get_validated_init_data(
     request: Request,
     settings: Annotated[Settings, Depends(get_web_settings)],
 ) -> ValidatedInitData:
+    if not settings.miniapp_enabled:
+        raise MiniAppDisabledError()
+
     authorization = request.headers.get("Authorization")
     if authorization is None:
         raise AuthenticationError("Telegram authorization is required")
@@ -42,9 +49,16 @@ def get_validated_init_data(
 
     validator: TelegramInitDataValidator = request.app.state.telegram_auth_validator
     try:
-        return validator.validate(raw_init_data)
+        init_data = validator.validate(raw_init_data)
     except TelegramInitDataError as error:
         raise AuthenticationError() from error
+    if (
+        settings.miniapp_allowed_telegram_ids
+        and init_data.user.id not in settings.miniapp_allowed_telegram_ids
+    ):
+        request.state.user_id = init_data.user.id
+        raise MiniAppUnavailableError()
+    return init_data
 
 
 async def get_current_user(

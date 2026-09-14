@@ -21,6 +21,7 @@ async def test_ration_api_uses_snapshots_groups_meals_and_isolates_users(
     settings = Settings(
         bot_token=BOT_TOKEN,
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)

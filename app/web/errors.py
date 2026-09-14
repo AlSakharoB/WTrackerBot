@@ -46,6 +46,25 @@ class AuthenticationError(WebAPIError):
         )
 
 
+class MiniAppDisabledError(WebAPIError):
+    def __init__(self) -> None:
+        super().__init__(
+            "miniapp_disabled",
+            "Mini App временно недоступен",
+            status_code=503,
+            headers={"Retry-After": "60"},
+        )
+
+
+class MiniAppUnavailableError(WebAPIError):
+    def __init__(self) -> None:
+        super().__init__(
+            "miniapp_not_available",
+            "Mini App пока недоступен для этого аккаунта",
+            status_code=403,
+        )
+
+
 def error_body(
     request: Request,
     code: str,

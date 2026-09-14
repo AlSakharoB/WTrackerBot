@@ -120,7 +120,7 @@ export function App({ telegram }: AppProps) {
     : previewProfile;
   useTelegramEnvironment(telegram, preferences.theme_mode);
 
-  if (location.pathname === "/privacy-policy") {
+  if (["/privacy", "/privacy-policy"].includes(location.pathname)) {
     return <PrivacyPolicyPage />;
   }
 

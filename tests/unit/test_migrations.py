@@ -136,7 +136,7 @@ def test_precreated_backup_marker_verifies_checksum(tmp_path: Path) -> None:
         migrate.verify_precreated_backup(make_settings(tmp_path))
 
 
-def test_compose_orders_db_migrate_bot_and_persists_backups() -> None:
+def test_compose_orders_db_migrate_long_running_services_and_persists_backups() -> None:
     project_root = Path(__file__).parents[2]
     compose = project_root.joinpath("docker-compose.yml").read_text()
     backup_dockerfile = project_root.joinpath("docker/backup.Dockerfile").read_text()
@@ -145,9 +145,15 @@ def test_compose_orders_db_migrate_bot_and_persists_backups() -> None:
 
     assert "migrate:" in compose
     assert "backup:" in compose
+    assert "web:" in compose
     assert "condition: service_completed_successfully" in compose
     assert "postgres_backups:/backups" in compose
     assert 'command: ["python", "-m", "scripts.migrate"]' in compose
+    assert 'command: ["python", "-m", "app.web.main"]' in compose
+    assert 'test: ["CMD", "python", "scripts/web_healthcheck.py"]' in compose
+    assert "MINIAPP_HOST: 0.0.0.0" in compose
+    assert '"${MINIAPP_PORT:-8080}"' in compose
+    assert "8080:8080" not in compose
     assert "postgres:16-alpine" in backup_dockerfile
     assert "awk 'NR > 2'" in backup_script
     assert 'rm -f "$expired_backup"' in backup_script

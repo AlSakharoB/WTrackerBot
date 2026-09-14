@@ -33,6 +33,7 @@ async def test_food_api_crud_pagination_dependencies_sharing_and_isolation(
         bot_token=BOT_TOKEN,
         bot_username="WTrackerTestBot",
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)
@@ -221,6 +222,7 @@ async def test_food_folder_api_organizes_catalog_without_deleting_food(
     settings = Settings(
         bot_token=BOT_TOKEN,
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)

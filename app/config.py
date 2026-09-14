@@ -1,4 +1,6 @@
+import re
 from functools import lru_cache
+from ipaddress import ip_address
 from logging import getLevelNamesMapping
 from pathlib import Path
 from typing import Annotated, Literal
@@ -6,6 +8,25 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+_DOMAIN_LABEL_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+
+
+def _parse_positive_ids(value: object, *, setting_name: str) -> object:
+    if value is None or value == "":
+        return set()
+    if not isinstance(value, str):
+        return value
+
+    try:
+        parsed = {int(item.strip()) for item in value.split(",") if item.strip()}
+    except ValueError as error:
+        msg = f"{setting_name} must be comma-separated integers"
+        raise ValueError(msg) from error
+    if any(telegram_id <= 0 for telegram_id in parsed):
+        msg = f"{setting_name} must contain positive integers"
+        raise ValueError(msg)
+    return parsed
 
 
 class Settings(BaseSettings):
@@ -61,6 +82,8 @@ class Settings(BaseSettings):
     )
     bot_username: str | None = Field(default=None, min_length=5, max_length=33)
     miniapp_enabled: bool = False
+    miniapp_domain: str = Field(default="localhost", min_length=1, max_length=253)
+    miniapp_acme_email: str | None = Field(default=None, max_length=254)
     miniapp_public_url: AnyHttpUrl = AnyHttpUrl("http://localhost:5173")
     miniapp_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
     miniapp_port: int = Field(default=8080, ge=1, le=65_535)
@@ -74,6 +97,15 @@ class Settings(BaseSettings):
     )
     miniapp_cors_origins: Annotated[tuple[str, ...], NoDecode] = (
         "http://localhost:5173",
+    )
+    miniapp_allowed_telegram_ids: Annotated[set[int], NoDecode] = Field(
+        default_factory=set
+    )
+    miniapp_manage_menu_button: bool = True
+    miniapp_menu_button_text: str = Field(
+        default="Открыть дневник",
+        min_length=1,
+        max_length=64,
     )
     web_mutation_receipt_ttl_hours: int = Field(default=24, ge=1, le=168)
     web_mutation_receipt_cleanup_seconds: int = Field(
@@ -140,20 +172,63 @@ class Settings(BaseSettings):
     @field_validator("admin_telegram_ids", mode="before")
     @classmethod
     def parse_admin_telegram_ids(cls, value: object) -> object:
-        if value is None or value == "":
-            return set()
+        return _parse_positive_ids(value, setting_name="ADMIN_TELEGRAM_IDS")
+
+    @field_validator("miniapp_allowed_telegram_ids", mode="before")
+    @classmethod
+    def parse_miniapp_allowed_telegram_ids(cls, value: object) -> object:
+        return _parse_positive_ids(
+            value,
+            setting_name="MINIAPP_ALLOWED_TELEGRAM_IDS",
+        )
+
+    @field_validator("miniapp_domain")
+    @classmethod
+    def validate_miniapp_domain(cls, value: str) -> str:
+        normalized = value.strip().lower().rstrip(".")
+        if normalized == "localhost":
+            return normalized
+        try:
+            ip_address(normalized)
+        except ValueError:
+            pass
+        else:
+            msg = "MINIAPP_DOMAIN must be a hostname, not an IP address"
+            raise ValueError(msg)
+        labels = normalized.split(".")
+        if len(normalized) > 253 or any(
+            not _DOMAIN_LABEL_PATTERN.fullmatch(label) for label in labels
+        ):
+            msg = "MINIAPP_DOMAIN must contain a valid hostname without scheme or path"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("miniapp_acme_email", mode="before")
+    @classmethod
+    def parse_optional_acme_email(cls, value: object) -> object:
         if not isinstance(value, str):
             return value
-
-        try:
-            parsed = {int(item.strip()) for item in value.split(",") if item.strip()}
-        except ValueError as error:
-            msg = "ADMIN_TELEGRAM_IDS must be comma-separated integers"
-            raise ValueError(msg) from error
-        if any(telegram_id <= 0 for telegram_id in parsed):
-            msg = "ADMIN_TELEGRAM_IDS must contain positive integers"
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if (
+            normalized.count("@") != 1
+            or normalized.startswith("@")
+            or normalized.endswith("@")
+            or any(character.isspace() for character in normalized)
+        ):
+            msg = "MINIAPP_ACME_EMAIL must be a valid email address"
             raise ValueError(msg)
-        return parsed
+        return normalized
+
+    @field_validator("miniapp_menu_button_text")
+    @classmethod
+    def normalize_miniapp_menu_button_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "MINIAPP_MENU_BUTTON_TEXT must not be blank"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("miniapp_cors_origins", mode="before")
     @classmethod
@@ -179,8 +254,31 @@ class Settings(BaseSettings):
             if self.miniapp_public_url.scheme != "https":
                 msg = "Production MINIAPP_PUBLIC_URL must use HTTPS"
                 raise ValueError(msg)
-            if not self.miniapp_cors_origins:
-                msg = "Production Mini App requires at least one CORS origin"
+            if self.miniapp_domain == "localhost" or "." not in self.miniapp_domain:
+                msg = "Production MINIAPP_DOMAIN must be a public hostname"
+                raise ValueError(msg)
+            public_url = str(self.miniapp_public_url).rstrip("/")
+            expected_origin = f"https://{self.miniapp_domain}"
+            if (
+                self.miniapp_public_url.username is not None
+                or self.miniapp_public_url.password is not None
+                or self.miniapp_public_url.query is not None
+                or self.miniapp_public_url.fragment is not None
+                or self.miniapp_public_url.path not in {None, "", "/"}
+            ):
+                msg = (
+                    "Production MINIAPP_PUBLIC_URL must be an origin without "
+                    "path, query, fragment, or credentials"
+                )
+                raise ValueError(msg)
+            if public_url != expected_origin:
+                msg = "Production MINIAPP_PUBLIC_URL must match MINIAPP_DOMAIN"
+                raise ValueError(msg)
+            if self.miniapp_cors_origins != (expected_origin,):
+                msg = (
+                    "Production MINIAPP_CORS_ORIGINS must exactly match "
+                    "MINIAPP_PUBLIC_URL"
+                )
                 raise ValueError(msg)
         return self
 

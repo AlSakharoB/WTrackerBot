@@ -256,14 +256,16 @@ describe("Mini App routes", () => {
     expect(screen.getByText("Будущий день")).toBeInTheDocument();
   });
 
-  it("keeps the privacy policy publicly accessible", () => {
-    renderApp(
-      "/privacy-policy",
-      createPreviewAdapter({ isDevelopmentPreview: false }),
-    );
-    expect(screen.getByRole("heading", { name: "Политика конфиденциальности" })).toBeInTheDocument();
-    expect(screen.queryByText("Откройте приложение из Telegram")).not.toBeInTheDocument();
-  });
+  it.each(["/privacy", "/privacy-policy"])(
+    "keeps the privacy policy publicly accessible at %s",
+    (path) => {
+      renderApp(path, createPreviewAdapter({ isDevelopmentPreview: false }));
+      expect(
+        screen.getByRole("heading", { name: "Политика конфиденциальности" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Откройте приложение из Telegram")).not.toBeInTheDocument();
+    },
+  );
 
   it("applies stable viewport and safe area values", () => {
     renderApp("/ration", createPreviewAdapter({

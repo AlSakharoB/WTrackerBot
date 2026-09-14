@@ -20,6 +20,7 @@ async def test_signed_user_and_idempotent_mutation_share_database(
     settings = Settings(
         bot_token=BOT_TOKEN,
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)

@@ -49,6 +49,8 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.share_max_components == 200
     assert settings.share_max_payload_bytes == 262_144
     assert settings.miniapp_enabled is False
+    assert settings.miniapp_domain == "localhost"
+    assert settings.miniapp_acme_email is None
     assert str(settings.miniapp_public_url) == "http://localhost:5173/"
     assert settings.miniapp_host == "127.0.0.1"
     assert settings.miniapp_port == 8080
@@ -57,6 +59,9 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.miniapp_max_auth_header_bytes == 8192
     assert settings.miniapp_max_request_body_bytes == 65_536
     assert settings.miniapp_cors_origins == ("http://localhost:5173",)
+    assert settings.miniapp_allowed_telegram_ids == set()
+    assert settings.miniapp_manage_menu_button is True
+    assert settings.miniapp_menu_button_text == "Открыть дневник"
     assert settings.web_mutation_receipt_ttl_hours == 24
     assert settings.web_mutation_receipt_cleanup_seconds == 3600
     assert str(settings.open_food_facts_base_url) == "https://world.openfoodfacts.org/"
@@ -120,3 +125,103 @@ def test_settings_require_https_for_enabled_production_miniapp() -> None:
             miniapp_public_url="http://app.example.com",
             _env_file=None,
         )
+
+
+def test_settings_accept_production_miniapp_contract() -> None:
+    settings = Settings(
+        **VALID_SETTINGS,
+        app_environment="production",
+        miniapp_enabled=True,
+        miniapp_domain="App.Example.COM.",
+        miniapp_acme_email=" admin@example.com ",
+        miniapp_public_url="https://app.example.com",
+        miniapp_cors_origins="https://app.example.com/",
+        miniapp_allowed_telegram_ids="123, 456,123",
+        miniapp_menu_button_text="  Открыть дневник  ",
+        _env_file=None,
+    )
+
+    assert settings.miniapp_domain == "app.example.com"
+    assert settings.miniapp_acme_email == "admin@example.com"
+    assert settings.miniapp_allowed_telegram_ids == {123, 456}
+    assert settings.miniapp_menu_button_text == "Открыть дневник"
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_message"),
+    [
+        (
+            {"miniapp_domain": "127.0.0.1"},
+            "MINIAPP_DOMAIN must be a hostname",
+        ),
+        (
+            {"miniapp_domain": "localhost"},
+            "MINIAPP_DOMAIN must be a public hostname",
+        ),
+        (
+            {"miniapp_domain": "other.example.com"},
+            "MINIAPP_PUBLIC_URL must match MINIAPP_DOMAIN",
+        ),
+        (
+            {"miniapp_public_url": "https://app.example.com/profile"},
+            "MINIAPP_PUBLIC_URL must be an origin",
+        ),
+        (
+            {"miniapp_public_url": "https://user@app.example.com"},
+            "MINIAPP_PUBLIC_URL must be an origin",
+        ),
+        (
+            {"miniapp_public_url": "https://app.example.com?debug=1"},
+            "MINIAPP_PUBLIC_URL must be an origin",
+        ),
+        (
+            {"miniapp_cors_origins": "https://other.example.com"},
+            "MINIAPP_CORS_ORIGINS must exactly match",
+        ),
+    ],
+)
+def test_settings_reject_invalid_production_miniapp_contract(
+    override: dict[str, str],
+    expected_message: str,
+) -> None:
+    values = {
+        **VALID_SETTINGS,
+        "app_environment": "production",
+        "miniapp_enabled": True,
+        "miniapp_domain": "app.example.com",
+        "miniapp_public_url": "https://app.example.com",
+        "miniapp_cors_origins": "https://app.example.com",
+        **override,
+    }
+
+    with pytest.raises(ValidationError, match=expected_message):
+        Settings(**values, _env_file=None)
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_message"),
+    [
+        (
+            {"miniapp_allowed_telegram_ids": "123,invalid"},
+            "MINIAPP_ALLOWED_TELEGRAM_IDS must be comma-separated integers",
+        ),
+        (
+            {"miniapp_allowed_telegram_ids": "0"},
+            "MINIAPP_ALLOWED_TELEGRAM_IDS must contain positive integers",
+        ),
+        (
+            {"miniapp_acme_email": "invalid"},
+            "MINIAPP_ACME_EMAIL must be a valid email address",
+        ),
+        (
+            {"miniapp_menu_button_text": "   "},
+            "MINIAPP_MENU_BUTTON_TEXT must not be blank",
+        ),
+    ],
+)
+def test_settings_reject_invalid_miniapp_deploy_values(
+    override: dict[str, str],
+    expected_message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=expected_message):
+        Settings(**VALID_SETTINGS, **override, _env_file=None)

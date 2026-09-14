@@ -113,6 +113,43 @@ services:
     tmpfs:
       - /tmp:size=16m,mode=1777
 
+  web:
+    image: ${BOT_IMAGE_REPOSITORY:-nutrition-bot}:${APP_VERSION:-0.1.0}-${GIT_COMMIT_SHA:-unknown}
+    build:
+      context: .
+      target: runtime
+    command: ["python", "-m", "app.web.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/nutrition_bot}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+      MINIAPP_HOST: 0.0.0.0
+      MINIAPP_PORT: ${MINIAPP_PORT:-8080}
+    expose:
+      - "${MINIAPP_PORT:-8080}"
+    healthcheck:
+      test: ["CMD", "python", "scripts/web_healthcheck.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    init: true
+    logging: *default-logging
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+
 volumes:
   postgres_backups:
   postgres_data:

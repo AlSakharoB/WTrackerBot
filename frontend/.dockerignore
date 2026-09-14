@@ -1,0 +1,14 @@
+.env
+.env.*
+node_modules/
+dist/
+coverage/
+screenshots/
+playwright-report/
+test-results/
+.cache/
+.vite/
+*.tsbuildinfo
+design/
+scripts/capture-*.mjs
+

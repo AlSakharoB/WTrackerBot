@@ -42,6 +42,7 @@ async def test_profile_settings_goals_reminders_and_deletion_api(
         bot_token=BOT_TOKEN,
         database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
         app_version="0.3.0-test",
+        miniapp_enabled=True,
         _env_file=None,
     )
     app = create_web_app(settings)

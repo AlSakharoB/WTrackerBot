@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "verify:build": "node scripts/verify-production-build.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
