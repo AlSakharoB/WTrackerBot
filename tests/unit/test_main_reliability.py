@@ -58,6 +58,12 @@ def patch_revision_guard(monkeypatch) -> AsyncMock:
     return guard
 
 
+def patch_menu_reconciliation(monkeypatch) -> AsyncMock:
+    reconcile = AsyncMock()
+    monkeypatch.setattr("app.main.reconcile_miniapp_menu_button", reconcile)
+    return reconcile
+
+
 async def test_command_registration_failure_does_not_block_polling(
     monkeypatch,
 ) -> None:
@@ -85,6 +91,7 @@ async def test_command_registration_failure_does_not_block_polling(
     monkeypatch.setattr("app.main.check_database_connection", check_database)
     revision_guard = patch_revision_guard(monkeypatch)
     monkeypatch.setattr("app.main.set_bot_commands", register_commands)
+    reconcile_menu = patch_menu_reconciliation(monkeypatch)
     scheduler = patch_reminder_scheduler(monkeypatch)
 
     await run_bot(settings)
@@ -101,6 +108,7 @@ async def test_command_registration_failure_does_not_block_polling(
     scheduler.start.assert_awaited_once()
     scheduler.shutdown.assert_awaited_once()
     bot.get_me.assert_awaited_once()
+    reconcile_menu.assert_awaited_once()
     assert dispatcher["bot_username"] == "nutrition_test_bot"
 
 
@@ -160,6 +168,7 @@ async def test_unexpected_polling_failure_notifies_admin(monkeypatch) -> None:
     monkeypatch.setattr("app.main.check_database_connection", AsyncMock())
     patch_revision_guard(monkeypatch)
     monkeypatch.setattr("app.main.set_bot_commands", AsyncMock())
+    patch_menu_reconciliation(monkeypatch)
     patch_reminder_scheduler(monkeypatch)
 
     with pytest.raises(RuntimeError, match="polling failed"):
@@ -194,6 +203,7 @@ async def test_http_client_close_failure_does_not_skip_database_disposal(
     monkeypatch.setattr("app.main.check_database_connection", AsyncMock())
     patch_revision_guard(monkeypatch)
     monkeypatch.setattr("app.main.set_bot_commands", AsyncMock())
+    patch_menu_reconciliation(monkeypatch)
     patch_reminder_scheduler(monkeypatch)
 
     await run_bot(settings)
@@ -237,3 +247,42 @@ async def test_revision_mismatch_blocks_polling_and_notifies_admin(monkeypatch) 
     notification = bot.send_message.await_args.kwargs["text"]
     assert "DatabaseRevisionMismatchError" in notification
     assert "database.revision_guard" in notification
+
+
+async def test_menu_button_api_failure_notifies_admin_and_keeps_polling(
+    monkeypatch,
+) -> None:
+    engine = Mock(dispose=AsyncMock())
+    dispatcher = FakeDispatcher(engine)
+    bot = Mock(
+        session=Mock(close=AsyncMock()),
+        send_message=AsyncMock(),
+        get_me=AsyncMock(return_value=Mock(username="nutrition_test_bot")),
+    )
+    settings = Settings(
+        bot_token="test-token",
+        database_url="postgresql+asyncpg://user:pass@localhost/db",
+        admin_telegram_ids={111},
+        _env_file=None,
+    )
+    menu_error = TelegramNetworkError(method=Mock(), message="network")
+
+    monkeypatch.setattr("app.main.create_dispatcher", lambda _: dispatcher)
+    monkeypatch.setattr("app.main.Bot", lambda **_: bot)
+    monkeypatch.setattr("app.main.check_database_connection", AsyncMock())
+    patch_revision_guard(monkeypatch)
+    register_commands = AsyncMock()
+    monkeypatch.setattr("app.main.set_bot_commands", register_commands)
+    reconcile_menu = AsyncMock(side_effect=menu_error)
+    monkeypatch.setattr("app.main.reconcile_miniapp_menu_button", reconcile_menu)
+    patch_reminder_scheduler(monkeypatch)
+
+    await run_bot(settings)
+
+    register_commands.assert_awaited_once_with(bot)
+    reconcile_menu.assert_awaited_once()
+    dispatcher.start_polling.assert_awaited_once()
+    bot.send_message.assert_awaited_once()
+    notification = bot.send_message.await_args.kwargs["text"]
+    assert "TelegramNetworkError" in notification
+    assert "telegram.menu_button" in notification

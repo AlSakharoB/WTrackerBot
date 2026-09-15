@@ -267,6 +267,16 @@ describe("Mini App routes", () => {
     },
   );
 
+  it("blocks the application outside Telegram in production", () => {
+    renderApp(
+      "/ration",
+      createPreviewAdapter({ isDevelopmentPreview: false, isTelegram: false }),
+    );
+
+    expect(screen.getByText("Откройте приложение из Telegram")).toBeInTheDocument();
+    expect(screen.queryByText("Баланс КБЖУ")).not.toBeInTheDocument();
+  });
+
   it("applies stable viewport and safe area values", () => {
     renderApp("/ration", createPreviewAdapter({
       viewport: {

@@ -84,6 +84,25 @@ async def test_me_requires_telegram_authorization() -> None:
     assert response.json()["error"]["correlation_id"]
 
 
+@pytest.mark.parametrize(
+    "init_data",
+    [
+        sign_init_data(auth_date=datetime(2020, 1, 1, tzinfo=UTC)),
+        sign_init_data(auth_date=datetime.now(UTC)).replace("279058397", "999999999"),
+    ],
+)
+async def test_me_rejects_expired_or_tampered_init_data(init_data: str) -> None:
+    app = create_web_app(make_settings())
+    async with make_client(app) as client:
+        response = await client.get(
+            "/api/v1/me",
+            headers={"Authorization": f"tma {init_data}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_failed"
+
+
 async def test_me_rejects_oversized_authorization_header() -> None:
     app = create_web_app(make_settings(miniapp_max_auth_header_bytes=512))
     async with make_client(app) as client:

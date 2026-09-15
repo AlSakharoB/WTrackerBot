@@ -1,12 +1,14 @@
 from aiogram import Router
+from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.sharing import handle_ingredient_share_start
 from app.bot.keyboards.main import build_main_menu_keyboard
 from app.db.models.user import User
+from app.services.miniapp_rollout import MiniAppRollout
 from app.sharing.payloads import SharePayloadLimits
 
 router = Router(name=__name__)
@@ -22,6 +24,23 @@ WELCOME_TEXT = """Привет! 👋
 MENU_TEXT = "Главное меню"
 
 
+def _build_user_menu(
+    message: Message,
+    current_user: User,
+    rollout: MiniAppRollout | None,
+) -> ReplyKeyboardMarkup:
+    if (
+        rollout is not None
+        and message.chat.type == ChatType.PRIVATE
+        and rollout.is_available_to(current_user.telegram_id)
+    ):
+        return build_main_menu_keyboard(
+            miniapp_url=rollout.public_url,
+            miniapp_button_text=rollout.menu_button_text,
+        )
+    return build_main_menu_keyboard()
+
+
 @router.message(CommandStart())
 async def start_handler(
     message: Message,
@@ -32,6 +51,7 @@ async def start_handler(
     bot_username: str | None = None,
     share_link_ttl_days: int = 30,
     share_payload_limits: SharePayloadLimits | None = None,
+    miniapp_rollout: MiniAppRollout | None = None,
 ) -> None:
     await state.clear()
     payload = extract_start_payload(message.text)
@@ -50,7 +70,10 @@ async def start_handler(
         )
         return
     text = WELCOME_TEXT if is_new_user else MENU_TEXT
-    await message.answer(text, reply_markup=build_main_menu_keyboard())
+    await message.answer(
+        text,
+        reply_markup=_build_user_menu(message, current_user, miniapp_rollout),
+    )
 
 
 def extract_start_payload(text: object) -> str | None:
@@ -67,9 +90,13 @@ async def menu_handler(
     message: Message,
     current_user: User,
     state: FSMContext,
+    miniapp_rollout: MiniAppRollout | None = None,
 ) -> None:
     await state.clear()
-    await message.answer(MENU_TEXT, reply_markup=build_main_menu_keyboard())
+    await message.answer(
+        MENU_TEXT,
+        reply_markup=_build_user_menu(message, current_user, miniapp_rollout),
+    )
 
 
 @router.message(Command("cancel"))

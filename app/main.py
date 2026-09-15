@@ -29,6 +29,10 @@ from app.db.session import (
 )
 from app.services.action_lock import ActionLockService
 from app.services.admin_notifications import AdminNotificationService
+from app.services.miniapp_rollout import (
+    MiniAppRollout,
+    reconcile_miniapp_menu_button,
+)
 from app.services.rate_limit import RateLimitRule, RateLimitScope, RateLimitService
 from app.services.reminder_scheduler import ReminderScheduler
 from app.sharing.links import normalize_bot_username
@@ -59,6 +63,7 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
             max_components=settings.share_max_components,
             max_payload_bytes=settings.share_max_payload_bytes,
         ),
+        miniapp_rollout=MiniAppRollout.from_settings(settings),
     )
     dispatcher["database_session_factory"] = session_factory
     lifecycle_middleware = LifecycleMiddleware(lifecycle)
@@ -228,6 +233,24 @@ async def run_bot(settings: Settings) -> None:
             logger.warning(
                 "Failed to register Telegram commands; polling will continue",
                 exc_info=True,
+            )
+        try:
+            await reconcile_miniapp_menu_button(
+                bot,
+                MiniAppRollout.from_settings(settings),
+            )
+        except TelegramAPIError as error:
+            logger.warning(
+                "Failed to reconcile Telegram Mini App menu button; "
+                "polling will continue",
+                exc_info=True,
+                extra={"operation": "telegram.menu_button"},
+            )
+            await admin_notifications.notify_error(
+                error,
+                correlation_id=None,
+                operation="telegram.menu_button",
+                user_id=None,
             )
         logger.info(
             "Bot polling started",
