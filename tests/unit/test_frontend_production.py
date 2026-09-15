@@ -48,6 +48,8 @@ def test_caddy_routes_api_and_spa_without_exposing_internal_health() -> None:
     assert "health_uri /internal/readyz" in caddyfile
     assert "try_files {path} /index.html" in caddyfile
     assert "root * /srv" in caddyfile
+    assert "http://127.0.0.1:2019" in caddyfile
+    assert 'respond "ok" 200' in caddyfile
 
 
 def test_caddy_security_and_cache_contract_is_telegram_compatible() -> None:
@@ -64,6 +66,7 @@ def test_caddy_security_and_cache_contract_is_telegram_compatible() -> None:
     assert "object-src 'none'" in caddyfile
     assert "unsafe-eval" not in caddyfile
     assert "X-Frame-Options" not in caddyfile
+    assert "\n\tlog " not in caddyfile
     assert 'Cache-Control "public, max-age=31536000, immutable"' in caddyfile
     assert 'Cache-Control "no-cache, no-store, must-revalidate"' in caddyfile
 

@@ -20,6 +20,8 @@ services:
       retries: 10
       start_period: 5s
     logging: *default-logging
+    networks:
+      - database
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
@@ -43,6 +45,8 @@ services:
       PGPORT: 5432
       PGUSER: ${POSTGRES_USER:-postgres}
     logging: *default-logging
+    networks:
+      - database
     read_only: true
     restart: "no"
     security_opt:
@@ -72,6 +76,9 @@ services:
       MIGRATION_BACKUP_DIR: ${MIGRATION_BACKUP_DIR:-/backups}
       MIGRATION_BACKUP_MARKER: ${MIGRATION_BACKUP_MARKER:-/backups/.last-verified}
     logging: *default-logging
+    networks:
+      - database
+      - edge
     read_only: true
     restart: "no"
     security_opt:
@@ -105,6 +112,9 @@ services:
       start_period: 20s
     init: true
     logging: *default-logging
+    networks:
+      - database
+      - edge
     read_only: true
     restart: unless-stopped
     security_opt:
@@ -142,6 +152,9 @@ services:
       start_period: 10s
     init: true
     logging: *default-logging
+    networks:
+      - database
+      - edge
     read_only: true
     restart: unless-stopped
     security_opt:
@@ -150,6 +163,63 @@ services:
     tmpfs:
       - /tmp:size=16m,mode=1777
 
+  miniapp:
+    image: nutrition-miniapp:${APP_VERSION:-0.1.0}-${GIT_COMMIT_SHA:-unknown}
+    build:
+      context: ./frontend
+      target: runtime
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      MINIAPP_DOMAIN: ${MINIAPP_DOMAIN:-localhost}
+      MINIAPP_PORT: ${MINIAPP_PORT:-8080}
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - --max-time
+        - "3"
+        - --output
+        - /dev/null
+        - http://127.0.0.1:2019/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    init: true
+    logging: *default-logging
+    networks:
+      - edge
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    stop_grace_period: 15s
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
+  caddy_config:
+  caddy_data:
   postgres_backups:
   postgres_data:
+
+networks:
+  database:
+    internal: true
+  edge:
