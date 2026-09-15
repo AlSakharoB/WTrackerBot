@@ -11,6 +11,7 @@ VALID_ENV = {
     "BOT_TOKEN": "secret-bot-token",
     "POSTGRES_PASSWORD": "secret-db-password",
     "DATABASE_URL": "postgresql+asyncpg://postgres:secret@db/nutrition_bot",
+    "APP_VERSION": "1.0.3",
     "APP_ENVIRONMENT": "production",
     "MINIAPP_ENABLED": "true",
     "MINIAPP_DOMAIN": "app.example.com",
@@ -90,6 +91,10 @@ def test_preflight_allows_local_placeholders_while_feature_is_disabled(
         (
             {"APP_ENVIRONMENT": "development"},
             "APP_ENVIRONMENT must be production",
+        ),
+        (
+            {"APP_VERSION": "release 1.0.3"},
+            "APP_VERSION must be a semantic version",
         ),
         (
             {"MINIAPP_ENABLED": "yes"},

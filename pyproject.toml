@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "nutrition-bot"
 version = "0.1.0"
 description = "Telegram bot for tracking nutrition and weight"
-readme = "README.md"
+readme = { text = "Telegram bot for tracking nutrition and weight.", content-type = "text/plain" }
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.13,<4.0",

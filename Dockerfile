@@ -13,7 +13,7 @@ WORKDIR /build
 
 RUN python -m venv /opt/venv
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
 COPY app ./app
 
 RUN pip install --no-cache-dir .
@@ -24,6 +24,7 @@ FROM builder AS test
 COPY alembic.ini ./
 COPY Dockerfile docker-compose.yml ./
 COPY docker ./docker
+COPY frontend ./frontend
 COPY migrations ./migrations
 COPY scripts ./scripts
 COPY tests ./tests

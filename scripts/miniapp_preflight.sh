@@ -79,6 +79,7 @@ for required_key in \
     BOT_TOKEN \
     POSTGRES_PASSWORD \
     DATABASE_URL \
+    APP_VERSION \
     APP_ENVIRONMENT \
     MINIAPP_ENABLED \
     MINIAPP_DOMAIN \
@@ -95,6 +96,11 @@ done
 require_nonempty_setting BOT_TOKEN
 require_nonempty_setting POSTGRES_PASSWORD
 require_nonempty_setting DATABASE_URL
+
+app_version=$(setting_value APP_VERSION)
+printf '%s\n' "$app_version" | \
+    grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9._-]*)?$' || \
+    fail "APP_VERSION must be a semantic version"
 
 app_environment=$(setting_value APP_ENVIRONMENT)
 [ "$app_environment" = "production" ] || fail "APP_ENVIRONMENT must be production"
