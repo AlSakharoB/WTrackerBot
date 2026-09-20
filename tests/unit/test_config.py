@@ -62,6 +62,9 @@ def test_settings_accept_valid_environment() -> None:
     assert settings.miniapp_allowed_telegram_ids == set()
     assert settings.miniapp_manage_menu_button is True
     assert settings.miniapp_menu_button_text == "Открыть дневник"
+    assert settings.miniapp_readiness_monitor_interval_seconds == 60
+    assert settings.miniapp_readiness_monitor_failure_threshold == 3
+    assert settings.miniapp_readiness_monitor_timeout_seconds == 5
     assert settings.web_mutation_receipt_ttl_hours == 24
     assert settings.web_mutation_receipt_cleanup_seconds == 3600
     assert str(settings.open_food_facts_base_url) == "https://world.openfoodfacts.org/"

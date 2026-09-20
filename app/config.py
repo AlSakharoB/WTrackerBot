@@ -107,6 +107,21 @@ class Settings(BaseSettings):
         min_length=1,
         max_length=64,
     )
+    miniapp_readiness_monitor_interval_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=3600,
+    )
+    miniapp_readiness_monitor_failure_threshold: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+    )
+    miniapp_readiness_monitor_timeout_seconds: float = Field(
+        default=5,
+        ge=1,
+        le=30,
+    )
     web_mutation_receipt_ttl_hours: int = Field(default=24, ge=1, le=168)
     web_mutation_receipt_cleanup_seconds: int = Field(
         default=3600,

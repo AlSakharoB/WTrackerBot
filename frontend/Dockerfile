@@ -20,8 +20,13 @@ RUN npm run lint \
 
 FROM quality AS build
 
+ARG APP_VERSION=0.1.0
+ARG GIT_COMMIT_SHA=unknown
+
 RUN npm run build \
-    && npm run verify:build
+    && npm run verify:build \
+    && APP_VERSION="$APP_VERSION" GIT_COMMIT_SHA="$GIT_COMMIT_SHA" node -e \
+        'const fs=require("node:fs"); fs.writeFileSync("dist/release.json", JSON.stringify({version:process.env.APP_VERSION,commit:process.env.GIT_COMMIT_SHA})+"\n")'
 
 
 FROM ${CADDY_IMAGE} AS runtime

@@ -78,7 +78,10 @@ command -v timedatectl >/dev/null 2>&1 || fail "timedatectl is not installed"
 
 miniapp_enabled=$(setting_value MINIAPP_ENABLED) || \
     fail "MINIAPP_ENABLED is missing"
-[ "$miniapp_enabled" = "true" ] || fail "MINIAPP_ENABLED must be true"
+case "$miniapp_enabled" in
+    true | false) ;;
+    *) fail "MINIAPP_ENABLED must be true or false" ;;
+esac
 
 ssh_port=$(setting_value MINIAPP_SSH_PORT 2>/dev/null || printf '22\n')
 case "$ssh_port" in
@@ -112,6 +115,12 @@ running_services=$(compose ps --services --status running)
 for required_service in db bot web miniapp; do
     printf '%s\n' "$running_services" | grep -qx "$required_service" || \
         fail "required service is not running: $required_service"
+    container_id=$(compose ps -q "$required_service")
+    health_status=$(docker inspect --format \
+        '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' \
+        "$container_id")
+    [ "$health_status" = "healthy" ] || \
+        fail "$required_service container health is $health_status"
 done
 
 compose exec -T bot python scripts/healthcheck.py >/dev/null || \
@@ -129,4 +138,4 @@ if [ "$restart_caddy" = "true" ]; then
 fi
 
 echo "Mini App host audit passed."
-echo "NTP, listeners, services, readiness, and Caddy storage: valid."
+echo "NTP, listeners, container health, readiness, and Caddy storage: valid."

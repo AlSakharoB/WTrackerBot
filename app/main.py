@@ -29,6 +29,7 @@ from app.db.session import (
 )
 from app.services.action_lock import ActionLockService
 from app.services.admin_notifications import AdminNotificationService
+from app.services.miniapp_readiness import MiniAppReadinessMonitor
 from app.services.miniapp_rollout import (
     MiniAppRollout,
     reconcile_miniapp_menu_button,
@@ -227,6 +228,31 @@ async def run_bot(settings: Settings) -> None:
             "App heartbeat started",
             extra={"operation": "health.heartbeat"},
         )
+        if settings.app_environment == "production":
+            readiness_monitor = MiniAppReadinessMonitor(
+                admin_notifications,
+                url=(f"http://web:{settings.miniapp_port}/internal/readyz"),
+                expected_version=settings.app_version,
+                interval_seconds=(settings.miniapp_readiness_monitor_interval_seconds),
+                failure_threshold=(
+                    settings.miniapp_readiness_monitor_failure_threshold
+                ),
+                timeout_seconds=(settings.miniapp_readiness_monitor_timeout_seconds),
+            )
+            dispatcher["miniapp_readiness_monitor"] = readiness_monitor
+            lifecycle.register_shutdown_callback(
+                "miniapp_readiness_monitor",
+                readiness_monitor.shutdown,
+            )
+            readiness_task = asyncio.create_task(
+                readiness_monitor.run(),
+                name="miniapp-readiness-monitor",
+            )
+            lifecycle.register_background_task(readiness_task)
+            logger.info(
+                "Mini App readiness monitor started",
+                extra={"operation": "miniapp.readiness_monitor"},
+            )
         try:
             await set_bot_commands(bot)
         except TelegramAPIError:

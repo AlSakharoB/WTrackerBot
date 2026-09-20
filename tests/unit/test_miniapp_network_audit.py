@@ -91,6 +91,7 @@ def test_network_audit_shell_scripts_are_valid_and_read_only() -> None:
     assert "timedatectl show --property=NTPSynchronized" in host_script
     assert "5432 8080 5173 5174" in host_script
     assert "docker compose" in host_script
+    assert ".State.Health.Status" in host_script
     assert "restart miniapp" in host_script
     assert "dig +short" in public_script
     assert "-verify_hostname" in public_script

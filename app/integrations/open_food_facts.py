@@ -288,7 +288,8 @@ class OpenFoodFactsClient:
         finally:
             suffix = barcode[-4:]
             barcode_hash = hashlib.sha256(barcode.encode()).hexdigest()[:12]
-            logger.info(
+            log = logger.info if status in {200, 404} else logger.warning
+            log(
                 "External product lookup provider=%s barcode_hash=%s "
                 "suffix=%s status=%s duration_ms=%d",
                 PROVIDER,

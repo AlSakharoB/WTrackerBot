@@ -22,6 +22,8 @@ def test_compose_contains_complete_ordered_production_topology() -> None:
     miniapp = service_block("miniapp")
     assert "context: ./frontend" in miniapp
     assert "target: runtime" in miniapp
+    assert "APP_VERSION: ${APP_VERSION:-0.1.0}" in miniapp
+    assert "GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}" in miniapp
     assert "web:\n        condition: service_healthy" in miniapp
     assert "MINIAPP_DOMAIN: ${MINIAPP_DOMAIN:-localhost}" in miniapp
 

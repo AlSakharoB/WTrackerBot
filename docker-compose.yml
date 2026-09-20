@@ -168,6 +168,9 @@ services:
     build:
       context: ./frontend
       target: runtime
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
     depends_on:
       web:
         condition: service_healthy
