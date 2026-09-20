@@ -75,6 +75,17 @@ validate_domain() {
     printf '%s\n' "$domain" | grep -Eqv '^[0-9.]+$'
 }
 
+validate_ipv4() {
+    printf '%s\n' "$1" | awk -F. '
+        NF != 4 { exit 1 }
+        {
+            for (part = 1; part <= 4; part += 1) {
+                if ($part !~ /^[0-9]+$/ || $part + 0 > 255) exit 1
+            }
+        }
+    '
+}
+
 for required_key in \
     BOT_TOKEN \
     POSTGRES_PASSWORD \
@@ -84,6 +95,9 @@ for required_key in \
     MINIAPP_ENABLED \
     MINIAPP_DOMAIN \
     MINIAPP_ACME_EMAIL \
+    MINIAPP_EXPECTED_IPV4 \
+    MINIAPP_EXPECTED_IPV6 \
+    MINIAPP_SSH_PORT \
     MINIAPP_PUBLIC_URL \
     MINIAPP_CORS_ORIGINS \
     MINIAPP_ALLOWED_TELEGRAM_IDS \
@@ -130,6 +144,13 @@ if [ -n "$allowed_ids" ]; then
         fail "MINIAPP_ALLOWED_TELEGRAM_IDS must contain positive comma-separated integers"
 fi
 
+ssh_port=$(setting_value MINIAPP_SSH_PORT)
+case "$ssh_port" in
+    '' | *[!0-9]*) fail "MINIAPP_SSH_PORT must be an integer" ;;
+esac
+[ "$ssh_port" -ge 1 ] && [ "$ssh_port" -le 65535 ] || \
+    fail "MINIAPP_SSH_PORT must be between 1 and 65535"
+
 acme_email=$(setting_value MINIAPP_ACME_EMAIL)
 if [ -n "$acme_email" ]; then
     printf '%s\n' "$acme_email" | \
@@ -141,6 +162,10 @@ if [ "$miniapp_enabled" = "true" ]; then
     miniapp_domain=$(setting_value MINIAPP_DOMAIN)
     validate_domain "$miniapp_domain" || \
         fail "MINIAPP_DOMAIN must be a public hostname without scheme, port, or path"
+
+    expected_ipv4=$(setting_value MINIAPP_EXPECTED_IPV4)
+    validate_ipv4 "$expected_ipv4" || \
+        fail "MINIAPP_EXPECTED_IPV4 must be a valid IPv4 address"
 
     expected_origin="https://$miniapp_domain"
     public_url=$(setting_value MINIAPP_PUBLIC_URL)

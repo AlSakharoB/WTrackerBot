@@ -183,6 +183,12 @@ if [ "$public_smoke" = "true" ]; then
         fail "public internal endpoint request failed"
     [ "$internal_status" = "404" ] || \
         fail "public internal endpoint returned HTTP $internal_status"
+
+    if [ "$miniapp_enabled" = "true" ]; then
+        echo "Checking production host and Caddy storage"
+        COMPOSE_FILE="$compose_file" ENV_FILE="$env_file" \
+            "$script_dir/miniapp_host_audit.sh"
+    fi
 else
     [ "$miniapp_enabled" = "false" ] || \
         fail "HTTPS smoke test cannot be skipped while Mini App is enabled"

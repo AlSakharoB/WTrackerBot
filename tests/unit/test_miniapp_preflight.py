@@ -16,6 +16,9 @@ VALID_ENV = {
     "MINIAPP_ENABLED": "true",
     "MINIAPP_DOMAIN": "app.example.com",
     "MINIAPP_ACME_EMAIL": "admin@example.com",
+    "MINIAPP_EXPECTED_IPV4": "203.0.113.10",
+    "MINIAPP_EXPECTED_IPV6": "",
+    "MINIAPP_SSH_PORT": "22",
     "MINIAPP_PUBLIC_URL": "https://app.example.com",
     "MINIAPP_CORS_ORIGINS": "https://app.example.com",
     "MINIAPP_ALLOWED_TELEGRAM_IDS": "123,456",
@@ -103,6 +106,14 @@ def test_preflight_allows_local_placeholders_while_feature_is_disabled(
         (
             {"MINIAPP_DOMAIN": "127.0.0.1"},
             "MINIAPP_DOMAIN must be a public hostname",
+        ),
+        (
+            {"MINIAPP_EXPECTED_IPV4": "999.0.0.1"},
+            "MINIAPP_EXPECTED_IPV4 must be a valid IPv4 address",
+        ),
+        (
+            {"MINIAPP_SSH_PORT": "70000"},
+            "MINIAPP_SSH_PORT must be between 1 and 65535",
         ),
         (
             {"MINIAPP_PUBLIC_URL": "https://app.example.com/profile"},
