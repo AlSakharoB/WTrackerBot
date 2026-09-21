@@ -300,5 +300,6 @@ describe("Mini App routes", () => {
     }));
 
     expect(document.documentElement.style.getPropertyValue("--app-header-safe-top")).toBe("52px");
+    expect(document.querySelector(".app-shell")).toHaveClass("app-shell--telegram");
   });
 });

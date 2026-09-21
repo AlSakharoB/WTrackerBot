@@ -33,8 +33,10 @@
 .range-select svg { width: 17px; flex: 0 0 17px; color: var(--color-text-secondary); }
 .range-select select { width: 100%; min-width: 0; height: 100%; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; cursor: pointer; font-size: 16px; font-weight: 700; }
 .custom-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 8px; margin: 0 0 14px; padding: 12px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
-.custom-range label { min-width: 0; display: grid; gap: 4px; color: var(--color-text-secondary); font-size: 11px; font-weight: 700; }
-.custom-range input { width: 100%; min-width: 0; max-width: 100%; min-height: var(--form-control-height); padding: 0 8px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font-size: 16px; }
+.custom-range label { width: 100%; min-width: 0; max-width: 100%; display: grid; gap: 4px; overflow: hidden; color: var(--color-text-secondary); font-size: 11px; font-weight: 700; }
+.custom-range__date { position: relative; width: 100%; min-width: 0; max-width: 100%; height: var(--form-control-height); display: block; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); }
+.custom-range input { width: 100%; min-width: 0; max-width: 100%; height: 100%; min-height: 0; display: block; padding: 0 8px; border: 0; border-radius: 0; color: var(--color-text-primary); background: transparent; font-size: 16px; -webkit-appearance: none; appearance: none; }
+.custom-range input::-webkit-date-and-time-value { min-width: 0; margin: 0; }
 .custom-range .button-secondary { min-height: var(--form-control-height); }
 .custom-range .form-error { grid-column: 1 / -1; }
 

@@ -11,6 +11,9 @@
   padding-left: var(--app-safe-left);
   padding-right: var(--app-safe-right);
 }
+.app-shell--telegram {
+  --app-header-safe-top: max(var(--app-safe-top), var(--app-content-safe-top), 52px);
+}
 
 .top-bar {
   position: relative;

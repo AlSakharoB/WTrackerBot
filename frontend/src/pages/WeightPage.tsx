@@ -311,8 +311,18 @@ export function WeightPage() {
               if (!customError) commitRange({ from: customFrom, to: customTo });
             }}
           >
-            <label>С <input type="date" max={today} value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} /></label>
-            <label>По <input type="date" max={today} value={customTo} onChange={(event) => setCustomTo(event.target.value)} /></label>
+            <label>
+              <span>С</span>
+              <span className="custom-range__date">
+                <input aria-label="Дата начала периода" type="date" max={today} value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
+              </span>
+            </label>
+            <label>
+              <span>По</span>
+              <span className="custom-range__date">
+                <input aria-label="Дата окончания периода" type="date" max={today} value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+              </span>
+            </label>
             <button type="submit" className="button-secondary" disabled={Boolean(customError)}>Показать</button>
             {customError && <p className="form-error">{customError}</p>}
           </form>

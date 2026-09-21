@@ -47,7 +47,7 @@ export function AppShell({ telegram, context }: AppShellProps) {
   }, [rootPath]);
 
   return (
-    <div className={`app-shell ${context.preferences.compact_lists ? "is-compact" : ""}`}>
+    <div className={`app-shell ${telegram.isTelegram ? "app-shell--telegram" : ""} ${context.preferences.compact_lists ? "is-compact" : ""}`}>
       <TopBar title={meta.title} subtitle={meta.subtitle} />
       <main ref={contentRef} className="app-content" id="main-content" tabIndex={-1}>
         <Outlet context={context} />
