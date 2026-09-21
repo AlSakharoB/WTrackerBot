@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir .
 
 FROM builder AS test
 
+COPY .dockerignore MINIAPP_SERVER_RUNBOOK.md ./
 COPY alembic.ini ./
 COPY Dockerfile docker-compose.yml ./
 COPY docker ./docker

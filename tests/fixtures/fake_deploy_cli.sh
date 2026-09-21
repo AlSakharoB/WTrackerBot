@@ -25,9 +25,12 @@ case "$(basename "$0")" in
     git)
         case "$*" in
             *" status "*) exit 0 ;;
-            *"rev-parse --short=12 HEAD"*) printf '0123456789ab\n' ;;
+            *"rev-parse --short=12 HEAD"*)
+                printf '%s\n' "${FAKE_GIT_SHORT:-0123456789ab}"
+                ;;
             *"rev-parse --verify HEAD"*)
-                printf '0123456789abcdef0123456789abcdef01234567\n'
+                printf '%s\n' \
+                    "${FAKE_GIT_REVISION:-0123456789abcdef0123456789abcdef01234567}"
                 ;;
             *) exit 2 ;;
         esac

@@ -150,6 +150,42 @@ def test_deploy_can_repeat_the_same_revision(tmp_path: Path) -> None:
     assert calls.count("image prune -a -f") == 2
 
 
+def test_deploy_records_a_new_version_and_revision(tmp_path: Path) -> None:
+    environment, _docker_log, _curl_log = prepare_deploy(tmp_path)
+
+    first = run_deploy(environment)
+    env_file = Path(environment["ENV_FILE"])
+    env_file.write_text(
+        env_file.read_text(encoding="utf-8").replace(
+            "APP_VERSION=1.0.3",
+            "APP_VERSION=1.0.4",
+        ),
+        encoding="utf-8",
+    )
+    environment["FAKE_GIT_SHORT"] = "abcdef123456"
+    environment["FAKE_GIT_REVISION"] = "abcdef1234567890abcdef1234567890abcdef12"
+    second = run_deploy(environment)
+
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert "APP_VERSION=1.0.3 GIT_COMMIT_SHA=0123456789ab" in first.stdout
+    assert "APP_VERSION=1.0.4 GIT_COMMIT_SHA=abcdef123456" in second.stdout
+
+
+def test_failed_compose_start_blocks_cleanup(tmp_path: Path) -> None:
+    environment, docker_log, _curl_log = prepare_deploy(tmp_path)
+    environment["FAKE_DOCKER_FAIL_MATCH"] = "up -d --no-build --wait"
+
+    result = run_deploy(environment)
+
+    assert result.returncode == 42
+    calls = docker_log.read_text(encoding="utf-8")
+    assert "logs --no-color --tail=200 db backup migrate bot web miniapp" in calls
+    assert "image prune" not in calls
+    assert "builder prune" not in calls
+    assert "rm -f backup migrate" not in calls
+
+
 def test_deploy_lock_rejects_parallel_run(tmp_path: Path) -> None:
     environment, docker_log, _curl_log = prepare_deploy(tmp_path)
     lock_path = Path(environment["DEPLOY_LOCK_FILE"])

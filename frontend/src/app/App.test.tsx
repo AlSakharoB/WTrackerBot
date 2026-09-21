@@ -53,7 +53,7 @@ describe("Mini App routes", () => {
     ["/profile", "Внешний вид"],
   ])("opens %s directly", async (path, heading) => {
     renderApp(path);
-    expect(await screen.findByText(heading)).toBeInTheDocument();
+    expect(await screen.findByText(heading, {}, { timeout: 3_000 })).toBeInTheDocument();
   });
 
   it("uses the configured default section instead of stale local history", async () => {

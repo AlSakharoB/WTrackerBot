@@ -1,4 +1,5 @@
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -8,6 +9,8 @@ from pydantic import ValidationError
 
 from app.config import Settings
 from scripts import migrate
+
+PROJECT_ROOT = Path(__file__).parents[2]
 
 
 def make_settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -137,11 +140,10 @@ def test_precreated_backup_marker_verifies_checksum(tmp_path: Path) -> None:
 
 
 def test_compose_orders_db_migrate_long_running_services_and_persists_backups() -> None:
-    project_root = Path(__file__).parents[2]
-    compose = project_root.joinpath("docker-compose.yml").read_text()
-    backup_dockerfile = project_root.joinpath("docker/backup.Dockerfile").read_text()
-    backup_script = project_root.joinpath("docker/backup.sh").read_text()
-    deploy = project_root.joinpath("scripts/deploy.sh").read_text()
+    compose = PROJECT_ROOT.joinpath("docker-compose.yml").read_text()
+    backup_dockerfile = PROJECT_ROOT.joinpath("docker/backup.Dockerfile").read_text()
+    backup_script = PROJECT_ROOT.joinpath("docker/backup.sh").read_text()
+    deploy = PROJECT_ROOT.joinpath("scripts/deploy.sh").read_text()
 
     assert "migrate:" in compose
     assert "backup:" in compose
@@ -170,3 +172,41 @@ def test_compose_orders_db_migrate_long_running_services_and_persists_backups() 
         "docker image prune -a -f"
     )
     assert "--volumes" not in deploy
+
+
+def test_backup_script_keeps_only_two_latest_verified_dumps(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    for index, name in enumerate(("old-a.dump", "old-b.dump", "old-c.dump")):
+        path = backup_dir / name
+        path.write_bytes(name.encode())
+        os.utime(path, (100 + index, 100 + index))
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_cli = PROJECT_ROOT / "tests/fixtures/fake_backup_cli.sh"
+    for command in ("pg_dump", "pg_restore", "date"):
+        bin_dir.joinpath(command).symlink_to(fake_cli)
+
+    marker = backup_dir / ".last-verified"
+    environment = os.environ | {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "MIGRATION_BACKUP_DIR": str(backup_dir),
+        "MIGRATION_BACKUP_MARKER": str(marker),
+        "PGDATABASE": "nutrition_bot",
+    }
+    result = subprocess.run(
+        [str(PROJECT_ROOT / "docker/backup.sh")],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    dumps = sorted(path.name for path in backup_dir.glob("*.dump"))
+    assert dumps == ["nutrition_bot_20260920T120000Z.dump", "old-c.dump"]
+    marker_name, marker_checksum = marker.read_text(encoding="utf-8").split()
+    newest = backup_dir / marker_name
+    assert newest.name == "nutrition_bot_20260920T120000Z.dump"
+    assert marker_checksum == hashlib.sha256(newest.read_bytes()).hexdigest()
