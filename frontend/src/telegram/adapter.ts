@@ -11,6 +11,7 @@ const EMPTY_INSET: TelegramInset = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface TelegramAdapter {
   readonly initData: string;
   readonly colorScheme: "light" | "dark";
+  readonly platform: string;
   readonly isTelegram: boolean;
   readonly isDevelopmentPreview: boolean;
   readonly viewport: TelegramViewport;
@@ -33,6 +34,10 @@ class WebAppTelegramAdapter implements TelegramAdapter {
 
   public get colorScheme(): "light" | "dark" {
     return this.webApp.colorScheme;
+  }
+
+  public get platform(): string {
+    return this.webApp.platform ?? "unknown";
   }
 
   public get viewport(): TelegramViewport {
@@ -84,6 +89,7 @@ class WebAppTelegramAdapter implements TelegramAdapter {
 class BrowserDevelopmentAdapter implements TelegramAdapter {
   public readonly isTelegram = false;
   public readonly isDevelopmentPreview = import.meta.env.DEV;
+  public readonly platform = "browser";
 
   public get colorScheme(): "light" | "dark" {
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches

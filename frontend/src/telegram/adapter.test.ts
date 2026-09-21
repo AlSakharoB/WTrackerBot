@@ -15,6 +15,7 @@ describe("createTelegramAdapter", () => {
     window.Telegram = {
       WebApp: {
         initData: "signed-data",
+        platform: "ios",
         colorScheme: "dark",
         ready,
         expand,
@@ -28,6 +29,7 @@ describe("createTelegramAdapter", () => {
 
     expect(adapter.initData).toBe("signed-data");
     expect(adapter.colorScheme).toBe("dark");
+    expect(adapter.platform).toBe("ios");
     expect(adapter.isTelegram).toBe(true);
     expect(ready).toHaveBeenCalledOnce();
     expect(expand).toHaveBeenCalledOnce();
@@ -43,6 +45,7 @@ describe("createTelegramAdapter", () => {
     window.Telegram = {
       WebApp: {
         initData: "signed-data",
+        platform: "android",
         colorScheme: "light",
         viewportStableHeight: 720,
         safeAreaInset: { top: 10, right: 1, bottom: 20, left: 1 },
@@ -59,6 +62,7 @@ describe("createTelegramAdapter", () => {
     const backCleanup = adapter.bindBackButton(backCallback);
 
     expect(adapter.viewport.stableHeight).toBe(720);
+    expect(adapter.platform).toBe("android");
     expect(adapter.viewport.safeArea.bottom).toBe(20);
     expect(onEvent).toHaveBeenCalledTimes(3);
     expect(onClick).toHaveBeenCalledWith(backCallback);

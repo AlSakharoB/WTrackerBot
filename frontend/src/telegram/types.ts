@@ -20,6 +20,7 @@ export type TelegramEvent =
 
 export interface TelegramWebApp {
   readonly initData: string;
+  readonly platform?: string;
   readonly colorScheme: "light" | "dark";
   readonly viewportStableHeight?: number;
   readonly safeAreaInset?: TelegramInset;

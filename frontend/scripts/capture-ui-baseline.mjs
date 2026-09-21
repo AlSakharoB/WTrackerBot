@@ -102,7 +102,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
   await page.addInitScript(({ theme, height, telegramColors, safeArea, state }) => {
     const noop = () => {};
     window.Telegram = { WebApp: {
-      initData: "AUDIT_SYNTHETIC_NOT_VALID_AUTH", colorScheme: telegramColors ? "light" : theme,
+      initData: "AUDIT_SYNTHETIC_NOT_VALID_AUTH", platform: "ios", colorScheme: telegramColors ? "light" : theme,
       viewportStableHeight: height,
       safeAreaInset: { top: safeArea ? 24 : 0, right: 0, bottom: safeArea ? 34 : 0, left: 0 },
       contentSafeAreaInset: { top: 0, right: 0, bottom: 0, left: 0 },

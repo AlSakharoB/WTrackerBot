@@ -12,7 +12,15 @@
   padding-right: var(--app-safe-right);
 }
 .app-shell--telegram {
-  --app-header-safe-top: max(var(--app-safe-top), var(--app-content-safe-top), 52px);
+  --app-header-safe-top: max(
+    var(--app-header-fallback),
+    var(--app-header-safe-top-js),
+    var(--app-safe-top),
+    var(--app-content-safe-top),
+    var(--tg-safe-area-inset-top, 0px),
+    var(--tg-content-safe-area-inset-top, 0px),
+    env(safe-area-inset-top, 0px)
+  );
 }
 .telegram-controls-spacer {
   flex: 0 0 var(--app-header-safe-top);

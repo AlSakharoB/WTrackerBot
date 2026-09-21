@@ -11,6 +11,7 @@ function createPreviewAdapter(overrides: Partial<TelegramAdapter> = {}): Telegra
   return {
     initData: "",
     colorScheme: "light",
+    platform: "browser",
     isTelegram: false,
     isDevelopmentPreview: true,
     viewport: {
@@ -292,6 +293,7 @@ describe("Mini App routes", () => {
   it("reserves Telegram header controls when the client reports no top inset", () => {
     renderApp("/ration", createPreviewAdapter({
       isTelegram: true,
+      platform: "ios",
       viewport: {
         stableHeight: 568,
         safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -299,9 +301,25 @@ describe("Mini App routes", () => {
       },
     }));
 
-    expect(document.documentElement.style.getPropertyValue("--app-header-safe-top")).toBe("52px");
+    expect(document.documentElement.style.getPropertyValue("--app-header-fallback")).toBe("72px");
+    expect(document.documentElement.style.getPropertyValue("--app-header-safe-top-js")).toBe("72px");
     expect(document.querySelector(".app-shell")).toHaveClass("app-shell--telegram");
     expect(document.querySelector(".telegram-controls-spacer")).toBeInTheDocument();
     expect(screen.queryByText("WTracker")).not.toBeInTheDocument();
+  });
+
+  it("uses a larger Telegram content safe area instead of the platform fallback", () => {
+    renderApp("/ration", createPreviewAdapter({
+      isTelegram: true,
+      platform: "ios",
+      viewport: {
+        stableHeight: 568,
+        safeArea: { top: 59, right: 0, bottom: 21, left: 0 },
+        contentSafeArea: { top: 96, right: 0, bottom: 0, left: 0 },
+      },
+    }));
+
+    expect(document.documentElement.style.getPropertyValue("--app-header-fallback")).toBe("72px");
+    expect(document.documentElement.style.getPropertyValue("--app-header-safe-top-js")).toBe("96px");
   });
 });
