@@ -44,6 +44,7 @@
   --app-safe-left: 0px;
   --app-content-safe-top: 0px;
   --app-content-safe-bottom: 0px;
+  --app-header-safe-top: 0px;
 }
 
 :root[data-theme="dark"] {

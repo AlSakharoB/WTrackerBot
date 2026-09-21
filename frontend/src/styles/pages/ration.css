@@ -41,11 +41,13 @@
 
 .macro-overview { min-width: 0; display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: 13px; padding-block: 8px; }
 .macro-ring { position: relative; width: 108px; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; }
-.macro-ring::after { position: absolute; width: 74px; aspect-ratio: 1; border-radius: 50%; background: var(--color-surface); content: ""; }
+.macro-ring::after { position: absolute; width: 80px; aspect-ratio: 1; border-radius: 50%; background: var(--color-surface); content: ""; }
 .macro-ring.is-empty { border: 15px solid var(--color-border); background: transparent; }
-.macro-ring.is-empty::after { width: 74px; }
-.macro-ring > div { position: relative; z-index: 1; max-width: 76px; display: grid; justify-items: center; text-align: center; }
-.macro-ring strong { max-width: 76px; overflow: hidden; font-size: 19px; line-height: 1; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.macro-ring.is-empty::after { width: 80px; }
+.macro-ring > div { position: relative; z-index: 1; width: 80px; display: grid; justify-items: center; text-align: center; }
+.macro-ring strong { max-width: 100%; font-size: 19px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.macro-ring.is-compact strong { font-size: 15px; }
+.macro-ring.is-extra-compact strong { font-size: 13px; }
 .macro-ring span { margin-top: 3px; color: var(--color-text-secondary); font-size: 9px; line-height: 1.2; }
 .macro-ring small { margin-top: 2px; color: var(--color-text-secondary); font-size: 8px; line-height: 1.15; }
 .macro-legend { min-width: 0; display: grid; }
@@ -229,8 +231,11 @@
   .ration-balance__status > svg { display: none; }
   .macro-overview { grid-template-columns: 96px minmax(0, 1fr); gap: 9px; }
   .macro-ring { width: 96px; }
-  .macro-ring::after, .macro-ring.is-empty::after { width: 66px; }
-  .macro-ring strong { max-width: 64px; font-size: 17px; }
+  .macro-ring::after, .macro-ring.is-empty::after { width: 70px; }
+  .macro-ring > div { width: 70px; }
+  .macro-ring strong { font-size: 17px; }
+  .macro-ring.is-compact strong { font-size: 14px; }
+  .macro-ring.is-extra-compact strong { font-size: 12px; }
   .macro-legend > div { grid-template-columns: 4px minmax(37px, .7fr) minmax(0, 1.3fr); gap: 5px; }
   .macro-legend span, .macro-legend strong { font-size: 9px; }
   .ration-energy-progress { grid-template-columns: auto minmax(28px, 1fr) auto; gap: 5px; }

@@ -375,6 +375,7 @@ try {
   const weightRequests = () => interactiveWeight.requests.filter((request) => request.startsWith("GET /api/v1/weight?"));
   const initialWeightRequests = weightRequests().length;
   const chart = interactiveWeight.page.locator(".weight-chart");
+  await chart.scrollIntoViewIfNeeded();
   const chartBounds = await chart.boundingBox();
   assert(chartBounds, "Interactive weight chart bounds are unavailable");
   const centerX = chartBounds.x + chartBounds.width / 2;

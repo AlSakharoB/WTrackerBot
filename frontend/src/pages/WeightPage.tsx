@@ -222,7 +222,7 @@ export function WeightPage() {
   const days = inclusiveDayCount(range);
   const isCurrentRange = range.to === today;
   const rangeDataReady = data.date_from === range.from && data.date_to === range.to;
-  const points = rangeDataReady ? data.points : [];
+  const points = data.points;
   const history = rangeDataReady ? data.history : [];
   const change = Number(data.change_from_previous_kg ?? 0);
   const ChangeIcon = change < 0 ? TrendingDown : change > 0 ? TrendingUp : Minus;
@@ -336,7 +336,6 @@ export function WeightPage() {
         {points.length ? (
           <>
             <WeightChart
-              key={`${range.from}-${range.to}`}
               points={points}
               targetWeight={data.goal?.target_weight_kg ?? null}
               timezone={data.timezone}

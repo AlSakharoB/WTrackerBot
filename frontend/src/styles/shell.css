@@ -15,12 +15,12 @@
 .top-bar {
   position: relative;
   z-index: 20;
-  flex: 0 0 calc(var(--top-bar-height) + max(var(--app-safe-top), var(--app-content-safe-top)));
-  min-height: calc(var(--top-bar-height) + max(var(--app-safe-top), var(--app-content-safe-top)));
+  flex: 0 0 calc(var(--top-bar-height) + var(--app-header-safe-top));
+  min-height: calc(var(--top-bar-height) + var(--app-header-safe-top));
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: calc(8px + max(var(--app-safe-top), var(--app-content-safe-top))) 16px 8px;
+  padding: calc(8px + var(--app-header-safe-top)) 16px 8px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }

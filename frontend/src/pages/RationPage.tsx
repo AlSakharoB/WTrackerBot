@@ -108,6 +108,13 @@ function percentage(current: string, target: string | null): number {
 
 function MacroOverview({ day }: { day: RationDay }) {
   const { totals, macro_percentages: macros, number_format: format } = day;
+  const energyText = formatValue(totals.energy_kcal, format);
+  const energyDigits = energyText.replace(/\s/g, "").length;
+  const energySize = energyDigits >= 9
+    ? "is-extra-compact"
+    : energyDigits >= 7
+      ? "is-compact"
+      : "";
   const hasMacros = macros.protein + macros.fat + macros.carbs > 0;
   const proteinEnd = Math.min(100, Math.max(0, macros.protein));
   const fatEnd = Math.min(100, Math.max(proteinEnd, proteinEnd + macros.fat));
@@ -119,13 +126,13 @@ function MacroOverview({ day }: { day: RationDay }) {
   return (
     <div className="macro-overview">
       <div
-        className={`macro-ring ${hasMacros ? "" : "is-empty"}`}
+        className={`macro-ring ${hasMacros ? "" : "is-empty"} ${energySize}`}
         style={chartStyle}
         role="img"
         aria-label={hasMacros ? `Белки ${macros.protein}%, жиры ${macros.fat}%, углеводы ${macros.carbs}%` : "Данные о БЖУ отсутствуют"}
       >
         <div>
-          <strong>{formatValue(totals.energy_kcal, format)}</strong>
+          <strong title={`${energyText} ккал`}>{energyText}</strong>
           <span>{day.goal?.energy_kcal ? `из ${formatValue(day.goal.energy_kcal, format)} ккал` : "ккал"}</span>
           {!hasMacros && <small>Нет данных БЖУ</small>}
         </div>

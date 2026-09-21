@@ -288,4 +288,17 @@ describe("Mini App routes", () => {
     expect(document.documentElement.style.getPropertyValue("--app-stable-height")).toBe("568px");
     expect(document.documentElement.style.getPropertyValue("--app-safe-bottom")).toBe("18px");
   });
+
+  it("reserves Telegram header controls when the client reports no top inset", () => {
+    renderApp("/ration", createPreviewAdapter({
+      isTelegram: true,
+      viewport: {
+        stableHeight: 568,
+        safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+        contentSafeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+      },
+    }));
+
+    expect(document.documentElement.style.getPropertyValue("--app-header-safe-top")).toBe("52px");
+  });
 });

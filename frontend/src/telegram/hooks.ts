@@ -10,9 +10,14 @@ import {
 import type { TelegramAdapter } from "./adapter";
 
 const PRIMARY_ROUTES = new Set(["/ration", "/food", "/weight", "/profile"]);
+const TELEGRAM_HEADER_FALLBACK = 52;
 
 function setViewportVariables(telegram: TelegramAdapter) {
   const { stableHeight, safeArea, contentSafeArea } = telegram.viewport;
+  const reportedHeaderInset = Math.max(safeArea.top, contentSafeArea.top);
+  const headerInset = telegram.isTelegram
+    ? Math.max(reportedHeaderInset, TELEGRAM_HEADER_FALLBACK)
+    : reportedHeaderInset;
   const root = document.documentElement.style;
   if (stableHeight !== null) {
     root.setProperty("--app-stable-height", `${stableHeight}px`);
@@ -23,6 +28,7 @@ function setViewportVariables(telegram: TelegramAdapter) {
   root.setProperty("--app-safe-left", `${safeArea.left}px`);
   root.setProperty("--app-content-safe-top", `${contentSafeArea.top}px`);
   root.setProperty("--app-content-safe-bottom", `${contentSafeArea.bottom}px`);
+  root.setProperty("--app-header-safe-top", `${headerInset}px`);
 }
 
 export function useTelegramEnvironment(

@@ -1,6 +1,7 @@
 import { Pencil } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -58,6 +59,7 @@ interface ActiveGesture {
   startY: number;
   pinchDistance: number;
   pinchMidpointRatio: number;
+  plotWidth: number;
 }
 
 function formatDate(value: string, timezone: string, withTime = false): string {
@@ -146,16 +148,16 @@ export function WeightChart({
   onRangeCommit,
   onSelect,
 }: WeightChartProps) {
-  const data: ChartDatum[] = points
+  const data = useMemo<ChartDatum[]>(() => points
     .map((point) => ({
       ...point,
       timestamp: timestampInTimezone(point.measured_at, timezone),
       weight: Number(point.weight_kg),
       average: point.moving_average_7d_kg === null ? null : Number(point.moving_average_7d_kg),
     }))
-    .sort((left, right) => left.timestamp - right.timestamp);
+    .sort((left, right) => left.timestamp - right.timestamp), [points, timezone]);
   const target = targetWeight === null ? null : Number(targetWeight);
-  const domain = yDomain(data, target);
+  const domain = useMemo(() => yDomain(data, target), [data, target]);
   const [previewRange, setPreviewRange] = useState(range);
   const [gestureActive, setGestureActive] = useState(false);
   const [selectedPoint, setSelectedPoint] = useState<ChartDatum | null>(null);
@@ -163,32 +165,64 @@ export function WeightChart({
   const pointersRef = useRef(new Map<number, ActivePointer>());
   const gestureRef = useRef<ActiveGesture | null>(null);
   const previewRef = useRef(range);
+  const previewFrameRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
 
-  useEffect(() => () => {
-    const plot = plotRef.current;
-    if (plot) {
-      for (const pointerId of pointersRef.current.keys()) {
-        if (plot.hasPointerCapture?.(pointerId)) plot.releasePointerCapture(pointerId);
-      }
+  useEffect(() => {
+    if (!gestureRef.current) {
+      previewRef.current = range;
+      setPreviewRange((current) => isSameWeightRange(current, range) ? current : range);
     }
-    pointersRef.current.clear();
-    gestureRef.current = null;
+  }, [range]);
+
+  useEffect(() => {
+    const plot = plotRef.current;
+    const pointers = pointersRef.current;
+    return () => {
+      if (previewFrameRef.current !== null) {
+        if (window.cancelAnimationFrame) window.cancelAnimationFrame(previewFrameRef.current);
+        else window.clearTimeout(previewFrameRef.current);
+      }
+      if (plot) {
+        for (const pointerId of pointers.keys()) {
+          if (plot.hasPointerCapture?.(pointerId)) plot.releasePointerCapture(pointerId);
+        }
+      }
+      pointers.clear();
+      gestureRef.current = null;
+    };
   }, []);
 
-  const setPreview = (next: WeightDateRange) => {
+  const cancelPreviewFrame = () => {
+    if (previewFrameRef.current === null) return;
+    if (window.cancelAnimationFrame) window.cancelAnimationFrame(previewFrameRef.current);
+    else window.clearTimeout(previewFrameRef.current);
+    previewFrameRef.current = null;
+  };
+
+  const queuePreview = (next: WeightDateRange) => {
     previewRef.current = next;
-    setPreviewRange(next);
+    if (previewFrameRef.current !== null) return;
+    const apply = () => {
+      previewFrameRef.current = null;
+      setPreviewRange(previewRef.current);
+    };
+    previewFrameRef.current = window.requestAnimationFrame
+      ? window.requestAnimationFrame(apply)
+      : window.setTimeout(apply, 16);
   };
 
   const finishGesture = (commit: boolean) => {
     const gesture = gestureRef.current;
+    cancelPreviewFrame();
     if (commit && gesture && (gesture.kind === "horizontal" || gesture.kind === "pinch")) {
       suppressClickRef.current = true;
       setSelectedPoint(null);
+      setPreviewRange(previewRef.current);
       if (!isSameWeightRange(previewRef.current, range)) onRangeCommit(previewRef.current);
     } else if (!commit) {
-      setPreview(range);
+      previewRef.current = range;
+      setPreviewRange(range);
     }
     const plot = plotRef.current;
     if (plot) {
@@ -216,6 +250,7 @@ export function WeightChart({
         startY: event.clientY,
         pinchDistance: 0,
         pinchMidpointRatio: 0.5,
+        plotWidth: Math.max(bounds.width, 1),
       };
       suppressClickRef.current = false;
       return;
@@ -230,6 +265,7 @@ export function WeightChart({
       startY: event.clientY,
       pinchDistance: Math.max(pointerDistance(first, second), 1),
       pinchMidpointRatio: Math.min(1, Math.max(0, ((first.x + second.x) / 2 - bounds.left) / Math.max(bounds.width, 1))),
+      plotWidth: Math.max(bounds.width, 1),
     };
     setGestureActive(true);
     event.preventDefault();
@@ -240,12 +276,11 @@ export function WeightChart({
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const gesture = gestureRef.current;
     if (!gesture) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
 
     if (gesture.kind === "pinch" && pointersRef.current.size >= 2) {
       const [first, second] = [...pointersRef.current.values()];
       const scale = pointerDistance(first, second) / gesture.pinchDistance;
-      setPreview(zoomWeightRange(gesture.initialRange, scale, gesture.pinchMidpointRatio, today));
+      queuePreview(zoomWeightRange(gesture.initialRange, scale, gesture.pinchMidpointRatio, today));
       event.preventDefault();
       return;
     }
@@ -258,7 +293,7 @@ export function WeightChart({
       if (gesture.kind === "horizontal") setGestureActive(true);
     }
     if (gesture.kind === "horizontal") {
-      setPreview(panWeightRange(gesture.initialRange, deltaX, bounds.width, today));
+      queuePreview(panWeightRange(gesture.initialRange, deltaX, gesture.plotWidth, today));
       event.preventDefault();
     }
   };
