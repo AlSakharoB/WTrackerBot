@@ -10,6 +10,7 @@ describe("createTelegramAdapter", () => {
   it("uses signed initData and initializes Telegram WebApp", () => {
     const ready = vi.fn();
     const expand = vi.fn();
+    const requestFullscreen = vi.fn();
     const onEvent = vi.fn();
     const offEvent = vi.fn();
     window.Telegram = {
@@ -19,6 +20,8 @@ describe("createTelegramAdapter", () => {
         colorScheme: "dark",
         ready,
         expand,
+        isVersionAtLeast: vi.fn(() => true),
+        requestFullscreen,
         onEvent,
         offEvent,
       },
@@ -33,6 +36,7 @@ describe("createTelegramAdapter", () => {
     expect(adapter.isTelegram).toBe(true);
     expect(ready).toHaveBeenCalledOnce();
     expect(expand).toHaveBeenCalledOnce();
+    expect(requestFullscreen).toHaveBeenCalledOnce();
   });
 
   it("binds viewport events and Telegram BackButton", () => {
@@ -64,15 +68,38 @@ describe("createTelegramAdapter", () => {
     expect(adapter.viewport.stableHeight).toBe(720);
     expect(adapter.platform).toBe("android");
     expect(adapter.viewport.safeArea.bottom).toBe(20);
-    expect(onEvent).toHaveBeenCalledTimes(3);
+    expect(onEvent).toHaveBeenCalledTimes(4);
     expect(onClick).toHaveBeenCalledWith(backCallback);
     expect(show).toHaveBeenCalledOnce();
 
     viewportCleanup();
     backCleanup();
-    expect(offEvent).toHaveBeenCalledTimes(3);
+    expect(offEvent).toHaveBeenCalledTimes(4);
     expect(offClick).toHaveBeenCalledWith(backCallback);
     expect(hide).toHaveBeenCalledOnce();
+  });
+
+  it("keeps expand as a fallback when fullscreen is unsupported", () => {
+    const expand = vi.fn();
+    const requestFullscreen = vi.fn();
+    window.Telegram = {
+      WebApp: {
+        initData: "signed-data",
+        platform: "ios",
+        colorScheme: "light",
+        ready: vi.fn(),
+        expand,
+        isVersionAtLeast: vi.fn(() => false),
+        requestFullscreen,
+        onEvent: vi.fn(),
+        offEvent: vi.fn(),
+      },
+    };
+
+    createTelegramAdapter().initialize();
+
+    expect(expand).toHaveBeenCalledOnce();
+    expect(requestFullscreen).not.toHaveBeenCalled();
   });
 
   it("does not invent authorization outside Telegram", () => {

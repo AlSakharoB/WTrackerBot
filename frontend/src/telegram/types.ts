@@ -16,18 +16,23 @@ export type TelegramEvent =
   | "themeChanged"
   | "viewportChanged"
   | "safeAreaChanged"
-  | "contentSafeAreaChanged";
+  | "contentSafeAreaChanged"
+  | "fullscreenChanged";
 
 export interface TelegramWebApp {
   readonly initData: string;
+  readonly version?: string;
   readonly platform?: string;
   readonly colorScheme: "light" | "dark";
+  readonly isFullscreen?: boolean;
   readonly viewportStableHeight?: number;
   readonly safeAreaInset?: TelegramInset;
   readonly contentSafeAreaInset?: TelegramInset;
   readonly BackButton?: TelegramBackButton;
   ready(): void;
   expand(): void;
+  isVersionAtLeast?(version: string): boolean;
+  requestFullscreen?(): void;
   close?(): void;
   onEvent(event: TelegramEvent, callback: () => void): void;
   offEvent(event: TelegramEvent, callback: () => void): void;

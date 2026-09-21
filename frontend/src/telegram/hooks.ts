@@ -10,26 +10,39 @@ import {
 import type { TelegramAdapter } from "./adapter";
 
 const PRIMARY_ROUTES = new Set(["/ration", "/food", "/weight", "/profile"]);
+const TELEGRAM_HEADER_GAP = 8;
 
-function telegramHeaderFallback(platform: string): number {
+interface TelegramHeaderMetrics {
+  controlsHeight: number;
+  minimumHeight: number;
+}
+
+function telegramHeaderMetrics(platform: string): TelegramHeaderMetrics {
   switch (platform.toLowerCase()) {
     case "ios":
-      return 72;
+      return { controlsHeight: 44, minimumHeight: 104 };
     case "android":
     case "android_x":
-      return 64;
+      return { controlsHeight: 48, minimumHeight: 80 };
     default:
-      return 56;
+      return { controlsHeight: 44, minimumHeight: 72 };
   }
 }
 
 function setViewportVariables(telegram: TelegramAdapter) {
   const { stableHeight, safeArea, contentSafeArea } = telegram.viewport;
-  const reportedHeaderInset = Math.max(safeArea.top, contentSafeArea.top);
-  const headerFallback = telegram.isTelegram
-    ? telegramHeaderFallback(telegram.platform)
-    : 0;
-  const headerInset = Math.max(reportedHeaderInset, headerFallback);
+  const metrics = telegramHeaderMetrics(telegram.platform);
+  const headerFallback = telegram.isTelegram ? metrics.minimumHeight : 0;
+  const telegramControlsBoundary = telegram.isTelegram
+    ? safeArea.top + metrics.controlsHeight
+    : safeArea.top;
+  const headerInset = telegram.isTelegram
+    ? Math.max(
+        contentSafeArea.top,
+        telegramControlsBoundary,
+        headerFallback - TELEGRAM_HEADER_GAP,
+      ) + TELEGRAM_HEADER_GAP
+    : Math.max(safeArea.top, contentSafeArea.top);
   const root = document.documentElement.style;
   if (stableHeight !== null) {
     root.setProperty("--app-stable-height", `${stableHeight}px`);

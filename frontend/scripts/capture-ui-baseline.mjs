@@ -106,7 +106,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
       viewportStableHeight: height,
       safeAreaInset: { top: safeArea ? 24 : 0, right: 0, bottom: safeArea ? 34 : 0, left: 0 },
       contentSafeAreaInset: { top: 0, right: 0, bottom: 0, left: 0 },
-      ready: noop, expand: noop, onEvent: noop, offEvent: noop,
+      ready: noop, expand: noop, requestFullscreen: noop, isVersionAtLeast: () => true, onEvent: noop, offEvent: noop,
       BackButton: { onClick: noop, offClick: noop, show: noop, hide: noop },
     } };
     if (state === "offline") {

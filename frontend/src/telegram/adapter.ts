@@ -51,6 +51,17 @@ class WebAppTelegramAdapter implements TelegramAdapter {
   public initialize(): void {
     this.webApp.ready();
     this.webApp.expand();
+    if (
+      this.webApp.requestFullscreen
+      && (this.webApp.isVersionAtLeast?.("8.0") ?? true)
+      && !this.webApp.isFullscreen
+    ) {
+      try {
+        this.webApp.requestFullscreen();
+      } catch {
+        // Older Telegram clients can expose a partial API. expand() remains the fallback.
+      }
+    }
   }
 
   public subscribeTheme(callback: () => void): () => void {
@@ -63,6 +74,7 @@ class WebAppTelegramAdapter implements TelegramAdapter {
       "viewportChanged",
       "safeAreaChanged",
       "contentSafeAreaChanged",
+      "fullscreenChanged",
     ] as const;
     for (const event of events) this.webApp.onEvent(event, callback);
     return () => {
