@@ -450,34 +450,6 @@ try {
   const insets = await openPage("food", { safeArea: true });
   await insets.capture("food-safe-area");
   await insets.close();
-  const offline = await openPage("food", { state: "offline" });
-  await offline.page.locator(".connection-status.is-offline").waitFor();
-  await offline.capture("food-offline-indicator");
-  await offline.close();
-  const rationOffline = await openPage("ration", { state: "offline" });
-  await rationOffline.page.locator(".connection-status.is-offline").waitFor();
-  await rationOffline.capture("ration-offline-indicator");
-  await rationOffline.close();
-
-  const longHeader = await openPage("food", { viewport: viewports[0] });
-  const headerResult = await longHeader.page.evaluate(() => {
-    const title = document.querySelector(".top-bar__titles small");
-    const titles = document.querySelector(".top-bar__titles");
-    const status = document.querySelector(".connection-status");
-    if (!title || !titles || !status) throw new Error("Top bar is unavailable");
-    title.textContent = "Еда · Очень длинное название пользовательского раздела продуктов";
-    const titlesRect = titles.getBoundingClientRect();
-    const statusRect = status.getBoundingClientRect();
-    return {
-      clipped: title.scrollWidth > title.clientWidth,
-      clearsStatus: titlesRect.right <= statusRect.left,
-      noHorizontalOverflow: document.documentElement.scrollWidth === innerWidth,
-    };
-  });
-  diagnostics.push({ check: "long-header", result: headerResult });
-  assert.deepEqual(headerResult, { clipped: true, clearsStatus: true, noHorizontalOverflow: true });
-  await longHeader.capture("food-long-header");
-  await longHeader.close();
 
   const compactRation = captures.find(({ file }) => file === "ration-320x568-light.png");
   assert(compactRation?.metrics.navigation && compactRation.metrics.mealsHeading && compactRation.metrics.addMealButton, "Compact ration metrics are unavailable");

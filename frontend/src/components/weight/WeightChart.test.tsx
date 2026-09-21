@@ -94,8 +94,15 @@ describe("WeightChart", () => {
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("81,75 кг");
 
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: /81.75 кг/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("81,75 кг");
+
     fireEvent.click(screen.getByRole("button", { name: "Изменить" }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("commits one mouse pan after pointerup and not during moves", () => {

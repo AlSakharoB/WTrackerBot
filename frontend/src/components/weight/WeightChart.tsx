@@ -167,6 +167,7 @@ export function WeightChart({
   const previewRef = useRef(range);
   const previewFrameRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
+  const selectedTooltipRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!gestureRef.current) {
@@ -192,6 +193,17 @@ export function WeightChart({
       gestureRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedPoint) return;
+    const dismissSelectedPoint = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && selectedTooltipRef.current?.contains(target)) return;
+      setSelectedPoint(null);
+    };
+    document.addEventListener("pointerdown", dismissSelectedPoint);
+    return () => document.removeEventListener("pointerdown", dismissSelectedPoint);
+  }, [selectedPoint]);
 
   const cancelPreviewFrame = () => {
     if (previewFrameRef.current === null) return;
@@ -378,11 +390,11 @@ export function WeightChart({
           </ResponsiveContainer>
         </div>
         {selectedPoint && (
-          <div className="weight-tooltip weight-tooltip--selected" role="status">
+          <div ref={selectedTooltipRef} className="weight-tooltip weight-tooltip--selected" role="status">
             <span>{formatDate(selectedPoint.measured_at, timezone, true)}</span>
             <strong>{selectedPoint.weight.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</strong>
             {selectedPoint.average !== null && <small>Среднее: {selectedPoint.average.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</small>}
-            <button type="button" onClick={() => onSelect(selectedPoint)}><Pencil aria-hidden="true" /> Изменить</button>
+            <button type="button" onClick={() => { const point = selectedPoint; setSelectedPoint(null); onSelect(point); }}><Pencil aria-hidden="true" /> Изменить</button>
           </div>
         )}
         {isLoading && <div className="weight-chart__loading" role="status" aria-live="polite"><span />Обновляем период</div>}

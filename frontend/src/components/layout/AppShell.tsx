@@ -6,14 +6,6 @@ import type { DefaultSection } from "../../api/client";
 import type { TelegramAdapter } from "../../telegram/adapter";
 import { useTelegramBackButton } from "../../telegram/hooks";
 import { BottomNavigation } from "./BottomNavigation";
-import { TopBar } from "./TopBar";
-
-const SECTION_META: Record<string, { title: string; subtitle?: string }> = {
-  "/ration": { title: "Рацион", subtitle: "Дневник питания" },
-  "/food": { title: "Еда", subtitle: "Ингредиенты и блюда" },
-  "/weight": { title: "Вес", subtitle: "Динамика и цель" },
-  "/profile": { title: "Профиль", subtitle: "Настройки" },
-};
 
 const SECTION_BY_PATH: Record<string, DefaultSection> = {
   "/ration": "ration",
@@ -31,7 +23,6 @@ export function AppShell({ telegram, context }: AppShellProps) {
   const location = useLocation();
   const contentRef = useRef<HTMLElement>(null);
   const rootPath = `/${location.pathname.split("/").filter(Boolean)[0] ?? ""}`;
-  const meta = SECTION_META[rootPath] ?? { title: "WTrackerBot" };
   useTelegramBackButton(telegram);
 
   useEffect(() => {
@@ -48,7 +39,7 @@ export function AppShell({ telegram, context }: AppShellProps) {
 
   return (
     <div className={`app-shell ${telegram.isTelegram ? "app-shell--telegram" : ""} ${context.preferences.compact_lists ? "is-compact" : ""}`}>
-      <TopBar title={meta.title} subtitle={meta.subtitle} />
+      {telegram.isTelegram && <div className="telegram-controls-spacer" aria-hidden="true" />}
       <main ref={contentRef} className="app-content" id="main-content" tabIndex={-1}>
         <Outlet context={context} />
       </main>
