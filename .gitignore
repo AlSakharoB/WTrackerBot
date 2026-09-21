@@ -17,3 +17,5 @@ frontend/dist/
 frontend/*.tsbuildinfo
 BOT*.md
 docs/*
+DEPLOY_1_1_0_INSTRUCTION.md
+problems/*

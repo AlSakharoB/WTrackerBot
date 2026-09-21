@@ -134,8 +134,8 @@ class Settings(BaseSettings):
         min_length=10,
         max_length=255,
     )
-    open_food_facts_timeout_seconds: float = Field(default=6, ge=1, le=30)
-    open_food_facts_retries: int = Field(default=1, ge=0, le=3)
+    open_food_facts_timeout_seconds: float = Field(default=10, ge=1, le=30)
+    open_food_facts_retries: int = Field(default=2, ge=0, le=3)
     open_food_facts_concurrency: int = Field(default=4, ge=1, le=20)
     open_food_facts_max_response_bytes: int = Field(
         default=524_288, ge=16_384, le=2_097_152

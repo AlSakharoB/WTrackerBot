@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from time import monotonic
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -16,6 +17,14 @@ from app.barcodes import decimal_value, safe_off_image_url
 
 logger = logging.getLogger(__name__)
 PROVIDER = "open_food_facts"
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 2
+_OFF_API_HOSTS = {
+    "world.openfoodfacts.org",
+    "world.openbeautyfacts.org",
+    "world.openpetfoodfacts.org",
+    "world.openproductsfacts.org",
+}
 REQUEST_FIELDS = ",".join(
     (
         "code",
@@ -217,6 +226,10 @@ class OpenFoodFactsClient:
         circuit_cooldown_seconds: int,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        base_host = urlsplit(base_url).hostname
+        self._allowed_redirect_hosts = _OFF_API_HOSTS | (
+            {base_host} if base_host is not None else set()
+        )
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=timeout_seconds,
@@ -267,14 +280,15 @@ class OpenFoodFactsClient:
                     status = 429
                     raise
                 except (
-                    httpx.TimeoutException,
+                    httpx.TransportError,
                     ExternalProductUnavailable,
                 ) as error:
-                    status = (
-                        "timeout"
-                        if isinstance(error, httpx.TimeoutException)
-                        else "5xx"
-                    )
+                    if isinstance(error, httpx.TimeoutException):
+                        status = "timeout"
+                    elif isinstance(error, httpx.TransportError):
+                        status = "network_error"
+                    else:
+                        status = "5xx"
                     if attempt >= self._retries:
                         raise ExternalProductUnavailable(
                             "Open Food Facts временно недоступен. Попробуйте позже."
@@ -303,47 +317,89 @@ class OpenFoodFactsClient:
 
     async def _request(self, barcode: str) -> ExternalFetch:
         async with self._semaphore:
-            async with self._client.stream(
-                "GET",
-                f"/api/v2/product/{barcode}.json",
-                params={"fields": REQUEST_FIELDS},
-            ) as response:
-                if response.status_code == 429:
-                    raise ExternalProductRateLimited(
-                        "Open Food Facts ограничил частоту запросов."
-                    )
-                if response.status_code >= 500:
-                    raise ExternalProductUnavailable(
-                        "Open Food Facts временно недоступен."
-                    )
-                if response.status_code == 404:
-                    return ExternalFetch(404, {"status": 0})
-                if response.status_code != 200:
-                    raise ExternalProductInvalidResponse(
-                        "Некорректный ответ Open Food Facts."
-                    )
-                content_type = response.headers.get("content-type", "").lower()
-                if "application/json" not in content_type:
-                    raise ExternalProductInvalidResponse(
-                        "Open Food Facts вернул не JSON."
-                    )
-                content_length = response.headers.get("content-length")
-                if content_length is not None:
-                    try:
-                        declared_size = int(content_length)
-                    except ValueError:
-                        declared_size = 0
-                    if declared_size > self._max_response_bytes:
-                        raise ExternalProductInvalidResponse(
-                            "Ответ Open Food Facts слишком большой."
-                        )
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk)
-                    if len(body) > self._max_response_bytes:
-                        raise ExternalProductInvalidResponse(
-                            "Ответ Open Food Facts слишком большой."
-                        )
+            request_url: str | httpx.URL = f"/api/v3/product/{barcode}"
+            request_params: dict[str, str] | None = {
+                "fields": REQUEST_FIELDS,
+                "product_type": "all",
+            }
+            for redirect_count in range(_MAX_REDIRECTS + 1):
+                async with self._client.stream(
+                    "GET",
+                    request_url,
+                    params=request_params,
+                ) as response:
+                    if response.status_code in _REDIRECT_STATUSES:
+                        if redirect_count >= _MAX_REDIRECTS:
+                            raise ExternalProductInvalidResponse(
+                                "Open Food Facts вернул слишком много перенаправлений."
+                            )
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ExternalProductInvalidResponse(
+                                "Open Food Facts вернул некорректное перенаправление."
+                            )
+                        redirect_url = response.request.url.join(location)
+                        if not redirect_url.query:
+                            redirect_url = redirect_url.copy_with(
+                                query=response.request.url.query
+                            )
+                        self._validate_redirect(redirect_url)
+                        request_url = redirect_url
+                        request_params = None
+                        continue
+                    return await self._read_response(response)
+        raise RuntimeError("Unreachable redirect state")
+
+    def _validate_redirect(self, url: httpx.URL) -> None:
+        parsed = urlsplit(str(url))
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise ExternalProductInvalidResponse(
+                "Open Food Facts вернул некорректное перенаправление."
+            ) from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in self._allowed_redirect_hosts
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 443}
+        ):
+            raise ExternalProductInvalidResponse(
+                "Open Food Facts вернул небезопасное перенаправление."
+            )
+
+    async def _read_response(self, response: httpx.Response) -> ExternalFetch:
+        if response.status_code == 429:
+            raise ExternalProductRateLimited(
+                "Open Food Facts ограничил частоту запросов."
+            )
+        if response.status_code >= 500:
+            raise ExternalProductUnavailable("Open Food Facts временно недоступен.")
+        if response.status_code == 404:
+            return ExternalFetch(404, {"status": 0})
+        if response.status_code != 200:
+            raise ExternalProductInvalidResponse("Некорректный ответ Open Food Facts.")
+        content_type = response.headers.get("content-type", "").lower()
+        if "application/json" not in content_type:
+            raise ExternalProductInvalidResponse("Open Food Facts вернул не JSON.")
+        content_length = response.headers.get("content-length")
+        if content_length is not None:
+            try:
+                declared_size = int(content_length)
+            except ValueError:
+                declared_size = 0
+            if declared_size > self._max_response_bytes:
+                raise ExternalProductInvalidResponse(
+                    "Ответ Open Food Facts слишком большой."
+                )
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            body.extend(chunk)
+            if len(body) > self._max_response_bytes:
+                raise ExternalProductInvalidResponse(
+                    "Ответ Open Food Facts слишком большой."
+                )
         try:
             payload: Any = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:

@@ -140,6 +140,27 @@ def test_parser_preserves_all_missing_values_as_missing() -> None:
     }
 
 
+def test_parser_accepts_v3_success_and_missing_responses() -> None:
+    found = parse_open_food_facts(
+        {
+            "status": "success",
+            "product": {
+                "product_name": "Test",
+                "nutriments": {"energy-kcal_100g": 100},
+            },
+        },
+        "4006381333931",
+    )
+    missing = parse_open_food_facts(
+        {"status": "failure", "errors": [{"id": "product_not_found"}]},
+        "036000291452",
+    )
+
+    assert found.found
+    assert found.name == "Test"
+    assert not missing.found
+
+
 def _client(
     handler: httpx.AsyncBaseTransport | httpx.MockTransport,
     *,
@@ -161,8 +182,9 @@ def _client(
 
 async def test_off_client_requests_only_fixed_product_endpoint() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v2/product/4006381333931.json"
+        assert request.url.path == "/api/v3/product/4006381333931"
         assert "fields" in request.url.params
+        assert request.url.params["product_type"] == "all"
         assert request.headers["user-agent"].startswith("WTrackerBot/test")
         return httpx.Response(
             200,
@@ -174,6 +196,55 @@ async def test_off_client_requests_only_fixed_product_endpoint() -> None:
     try:
         result = await client.fetch("4006381333931")
         assert result.response_json == {"status": 0}
+    finally:
+        await client.aclose()
+
+
+async def test_off_client_follows_only_trusted_product_redirects() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(
+                302,
+                headers={
+                    "location": (
+                        "https://world.openproductsfacts.org/api/v3/product/"
+                        "4006381333931"
+                    )
+                },
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"status": "success", "product": {"product_name": "Test"}},
+        )
+
+    client = _client(httpx.MockTransport(handler))
+    try:
+        result = await client.fetch("4006381333931")
+    finally:
+        await client.aclose()
+
+    assert result.response_json["status"] == "success"
+    assert len(requests) == 2
+    assert requests[1].url.host == "world.openproductsfacts.org"
+    assert requests[1].url.params["product_type"] == "all"
+
+
+async def test_off_client_rejects_untrusted_product_redirect() -> None:
+    client = _client(
+        httpx.MockTransport(
+            lambda request: httpx.Response(
+                302,
+                headers={"location": "https://evil.example/product"},
+            )
+        )
+    )
+    try:
+        with pytest.raises(ExternalProductInvalidResponse, match="небезопасное"):
+            await client.fetch("4006381333931")
     finally:
         await client.aclose()
 
@@ -245,6 +316,26 @@ async def test_off_client_maps_timeout_to_temporary_unavailability() -> None:
             await client.fetch("4006381333931")
     finally:
         await client.aclose()
+
+
+async def test_off_client_retries_network_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ConnectError("dns failure", request=request)
+        return httpx.Response(200, json={"status": 0})
+
+    client = _client(httpx.MockTransport(handler), retries=1)
+    try:
+        result = await client.fetch("4006381333931")
+    finally:
+        await client.aclose()
+
+    assert result.response_json == {"status": 0}
+    assert calls == 2
 
 
 async def test_off_client_opens_circuit_after_repeated_failures() -> None:

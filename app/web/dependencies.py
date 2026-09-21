@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -18,6 +19,8 @@ from app.web.errors import (
     MiniAppDisabledError,
     MiniAppUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_web_settings(request: Request) -> Settings:
@@ -51,6 +54,11 @@ def get_validated_init_data(
     try:
         init_data = validator.validate(raw_init_data)
     except TelegramInitDataError as error:
+        logger.warning(
+            "Telegram initData validation failed: %s",
+            error,
+            extra={"exception_type": type(error).__name__},
+        )
         raise AuthenticationError() from error
     if (
         settings.miniapp_allowed_telegram_ids

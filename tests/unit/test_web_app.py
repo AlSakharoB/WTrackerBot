@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
@@ -101,6 +102,26 @@ async def test_me_rejects_expired_or_tampered_init_data(init_data: str) -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "authentication_failed"
+
+
+async def test_invalid_init_data_logs_safe_reason(caplog) -> None:
+    app = create_web_app(make_settings())
+    init_data = sign_init_data(auth_date=datetime.now(UTC)).replace(
+        "279058397",
+        "999999999",
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.web.dependencies"):
+        async with make_client(app) as client:
+            response = await client.get(
+                "/api/v1/me",
+                headers={"Authorization": f"tma {init_data}"},
+            )
+
+    assert response.status_code == 401
+    assert "Invalid Telegram initData signature" in caplog.text
+    assert init_data not in caplog.text
+    assert BOT_TOKEN not in caplog.text
 
 
 async def test_me_rejects_oversized_authorization_header() -> None:
