@@ -211,10 +211,73 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
   return { page, context, capture, close, requests };
 }
 
+async function checkFieldFocus(session, name, control) {
+  await control.focus();
+  const target = (await control.evaluateHandle((element) => (
+    element.closest(".search-field, .range-select, .food-sort-control, .custom-range__date, .ration-stepper, .share-link") ?? element
+  ))).asElement();
+  await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" }));
+  // Finish focus transitions before comparing computed styles with rendered pixels.
+  const screenshot = await target.screenshot({ animations: "disabled", caret: "hide" });
+  const result = await target.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const outline = { width: style.outlineWidth, offset: style.outlineOffset, style: style.outlineStyle, color: style.outlineColor };
+    const rect = element.getBoundingClientRect();
+    const clippedBy = [];
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      if (!/hidden|clip|auto|scroll/.test(getComputedStyle(parent).overflowX)) continue;
+      const bounds = parent.getBoundingClientRect();
+      if (rect.left < bounds.left - 1 || rect.right > bounds.right + 1) clippedBy.push(parent.className);
+    }
+    return { target: element.className || element.id, focused: document.activeElement?.id, ...outline, clippedBy };
+  });
+  assert.equal(result.style, "solid", `${name}: focus ring must be visible`);
+  assert.equal(result.width, "2px", `${name}: focus ring width: ${JSON.stringify(result)}`);
+  assert.equal(result.offset, "-2px", `${name}: focus ring must stay inside the field`);
+  assert.deepEqual(result.clippedBy, [], `${name}: field must fit clipping ancestors`);
+  await target.dispose();
+  // Check rendered pixels as well as CSS: siblings or clipping can hide a correct outline.
+  const edges = await session.page.evaluate(async ({ png, color }) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${png}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+    const expected = color.match(/\d+/g).slice(0, 3).map(Number);
+    const matches = (x, y) => [...context.getImageData(x, y, 1, 1).data].slice(0, 3).every((value, index) => Math.abs(value - expected[index]) <= 5);
+    const midX = Math.floor(image.width / 2);
+    const midY = Math.floor(image.height / 2);
+    const band = [0, 1, 2, 3];
+    return {
+      left: band.some((distance) => matches(distance, midY)),
+      right: band.some((distance) => matches(image.width - 1 - distance, midY)),
+      top: band.some((distance) => matches(midX, distance)),
+      bottom: band.some((distance) => matches(midX, image.height - 1 - distance)),
+    };
+  }, { png: screenshot.toString("base64"), color: result.color });
+  assert(Object.values(edges).every(Boolean), `${name}: all four focus edges must be painted: ${JSON.stringify(edges)}`);
+  diagnostics.push({ check: `field-focus-${name}`, result: { ...result, edges } });
+}
+
 try {
   browser = process.env.UI_AUDIT_CDP_URL
     ? await chromium.connectOverCDP(process.env.UI_AUDIT_CDP_URL)
     : await chromium.launch({ executablePath: process.env.UI_AUDIT_EXECUTABLE || undefined });
+  const ration = await openPage("ration", { path: "/ration/add?date=2026-09-13&meal=breakfast" });
+  await ration.page.locator(".ration-source-list button").first().waitFor();
+  await ration.capture("ration-picker");
+  await ration.page.locator(".ration-source-list button").first().click();
+  await checkFieldFocus(ration, "ration-grams", ration.page.locator("#ration-grams"));
+  await ration.capture("ration-portion");
+  // Measure focus escape without modifying the application under audit.
+  await ration.page.getByRole("button", { name: /^Добавить в / }).focus();
+  await ration.page.keyboard.press("Tab");
+  diagnostics.push({ check: "sheet-tab-focus", result: await ration.page.evaluate(() => ({ insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]')), focusedElement: document.activeElement?.tagName })) });
+  await ration.close();
+
   for (const viewport of viewports) for (const theme of ["light", "dark"]) for (const section of Object.keys(ready)) {
     const session = await openPage(section, { viewport, theme });
     await session.capture(section);
@@ -238,17 +301,6 @@ try {
     await session.capture(`${section}-${path.includes("?") ? "future" : path.includes("share") ? `share-${state}` : path.includes("privacy") ? "privacy" : state}`);
     await session.close();
   }
-
-  const ration = await openPage("ration", { path: "/ration/add?date=2026-09-13&meal=breakfast" });
-  await ration.page.locator(".ration-source-list button").first().waitFor();
-  await ration.capture("ration-picker");
-  await ration.page.locator(".ration-source-list button").first().click();
-  await ration.capture("ration-portion");
-  // Measure focus escape without modifying the application under audit.
-  await ration.page.getByRole("button", { name: /^Добавить в / }).focus();
-  await ration.page.keyboard.press("Tab");
-  diagnostics.push({ check: "sheet-tab-focus", result: await ration.page.evaluate(() => ({ insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]')), focusedElement: document.activeElement?.tagName })) });
-  await ration.close();
 
   const outsideMenu = await openPage("food");
   const addBounds = await outsideMenu.page.getByRole("button", { name: "Добавить", exact: true }).boundingBox();
@@ -351,11 +403,14 @@ try {
 
   for (const theme of ["light", "dark"]) {
     const food = await openPage("food", { theme });
+    await checkFieldFocus(food, `food-search-${theme}`, food.page.getByLabel("Поиск еды"));
+    await checkFieldFocus(food, `food-sort-${theme}`, food.page.getByLabel("Сортировка"));
     await food.page.getByRole("button", { name: "Выбрать", exact: true }).click();
     await food.page.getByRole("button", { name: /^Выбрать / }).first().click();
     await food.capture("food-selection");
     await food.page.getByRole("button", { name: "Поделиться", exact: true }).click();
     await food.page.locator(".share-link").waitFor();
+    await checkFieldFocus(food, `share-link-${theme}`, food.page.locator(".share-link input"));
     await food.capture("food-share-link");
     await food.page.getByRole("button", { name: "Закрыть", exact: true }).click();
     await food.page.getByRole("button", { name: "В папку", exact: true }).click();
@@ -373,6 +428,8 @@ try {
     const editor = await openPage("food", { path: `/food/new?kind=${kind}`, state: kind === "ingredients" ? "duplicate" : "populated" });
     await editor.page.getByRole("dialog").waitFor();
     if (kind === "dishes") {
+      await checkFieldFocus(editor, "dish-name", editor.page.locator("#dish-name"));
+      await checkFieldFocus(editor, "dish-search", editor.page.locator("#dish-ingredient-search"));
       await editor.page.getByLabel("Название", { exact: true }).fill("Завтрак с йогуртом");
       await editor.page.locator(".ingredient-picker-results button").first().click();
       await editor.page.getByLabel("Найти ингредиент", { exact: true }).fill("банан");
@@ -401,6 +458,11 @@ try {
       const editor = await openPage("food", { theme, viewport });
       await editor.page.locator(".food-row__content").first().click();
       await editor.page.locator(".food-editor-details summary").click();
+      for (const field of ["name", "folder", "kcal", "package-weight", "photo"]) {
+        await checkFieldFocus(editor, `ingredient-${field}-${viewport.width}-${theme}`, editor.page.locator(`#ingredient-${field}`));
+        if (field === "name") await editor.capture("food-edit-focused-name");
+      }
+      await editor.page.locator("#ingredient-name").blur();
       const scroller = editor.page.locator(".bottom-sheet__content");
       for (const position of ["top", "end"]) {
         await scroller.evaluate((element, position) => {
@@ -429,10 +491,12 @@ try {
     ]) {
       await settings.page.locator(selector).first().click();
       await settings.page.getByRole("dialog").waitFor();
+      await checkFieldFocus(settings, `${name}-${theme}`, settings.page.locator('.bottom-sheet input:not([type="checkbox"]), .bottom-sheet select').first());
       await settings.capture(`profile-floating-actions-${name}`);
       await settings.page.locator(".bottom-sheet header button").click();
     }
     await settings.page.getByRole("button", { name: /Часовой пояс/ }).click();
+    await checkFieldFocus(settings, `timezone-${theme}`, settings.page.locator(".bottom-sheet select"));
     await settings.capture("profile-floating-actions-timezone");
     await settings.close();
   }
@@ -453,6 +517,7 @@ try {
     const scanner = await openPage("food", { state });
     await scanner.page.getByRole("button", { name: "Сканировать штрихкод" }).click();
     if (state === "populated") {
+      await checkFieldFocus(scanner, "barcode", scanner.page.getByLabel("Штрихкод", { exact: true }));
       await scanner.capture("barcode-manual");
       await scanner.page.getByRole("button", { name: "Включить камеру" }).click();
       await scanner.page.locator(".scanner-message").waitFor();
@@ -500,12 +565,17 @@ try {
   await weight.page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await weight.page.locator(".weight-history-list > button").first().click();
   await weight.page.getByRole("dialog").waitFor();
+  await checkFieldFocus(weight, "weight-note", weight.page.locator("#weight-note"));
   await weight.capture("weight-edit");
   await weight.page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await weight.page.getByRole("button", { name: "Изменить", exact: true }).click();
   await weight.capture("weight-goal");
   await weight.page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await weight.page.getByLabel("Период графика").selectOption("custom");
+  await checkFieldFocus(weight, "weight-period", weight.page.getByLabel("Период графика"));
+  for (let index = 0; index < 2; index++) {
+    await checkFieldFocus(weight, `weight-date-${index}`, weight.page.locator(".custom-range input").nth(index));
+  }
   await weight.page.locator(".weight-dynamics").scrollIntoViewIfNeeded();
   await weight.capture("weight-custom-range");
   await weight.close();

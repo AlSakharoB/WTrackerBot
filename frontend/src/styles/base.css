@@ -20,9 +20,13 @@ button, input, select, textarea { font: inherit; letter-spacing: 0; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { min-width: var(--control-min-size); min-height: var(--control-min-size); color: inherit; }
 input:not([type="checkbox"]):not([type="radio"]), select, textarea { min-height: var(--form-control-height); }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+button:focus-visible, a:focus-visible, input:is([type="checkbox"], [type="radio"]):focus-visible, [tabindex]:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-focus) 58%, transparent);
   outline-offset: 2px;
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { letter-spacing: 0; }

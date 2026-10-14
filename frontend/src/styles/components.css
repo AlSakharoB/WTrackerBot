@@ -141,6 +141,15 @@
 .form-field__message { color: var(--color-text-secondary); font-size: 12px; }
 .form-field.has-error .form-field__message { color: var(--color-danger); }
 
+:is(.search-field, .range-select, .food-sort-control, .custom-range__date, .ration-stepper, .share-link):focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+:is(.search-field, .range-select, .food-sort-control, .custom-range__date, .ration-stepper, .share-link) :is(input, select):focus {
+  outline: none;
+}
+.ration-stepper > button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+
 .dialog-backdrop, .sheet-backdrop {
   position: fixed;
   z-index: 100;
