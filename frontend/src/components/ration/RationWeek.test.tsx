@@ -31,6 +31,8 @@ describe("ration week", () => {
     const monday = await screen.findByRole("button", { name: /7 сентября.*2 записей, 120 ккал/ });
     expect(monday.querySelector("i")).toHaveClass("has-entries");
     expect(screen.getByRole("button", { name: /13 сентября.*сегодня/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Предыдущий день" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Следующий день" })).not.toBeInTheDocument();
     fireEvent.click(monday);
     expect(onChange).toHaveBeenCalledWith("2026-09-07");
     rerender(node("2026-09-07"));
@@ -44,8 +46,8 @@ describe("ration week", () => {
     vi.mocked(fetchRationWeek).mockRejectedValueOnce(new Error("offline"));
     const { onChange } = setup();
     const retry = await screen.findByRole("button", { name: "Обновить данные недели" });
-    fireEvent.click(screen.getByRole("button", { name: "Предыдущий день" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-12");
+    fireEvent.keyDown(screen.getByRole("navigation", { name: "Дни недели" }), { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalledWith("2026-09-06");
     fireEvent.click(retry);
     await screen.findByRole("button", { name: /7 сентября.*2 записей/ });
     expect(fetchRationWeek).toHaveBeenCalledTimes(2);
@@ -55,5 +57,19 @@ describe("ration week", () => {
     setup("2026-09-13", "");
     expect(fetchRationWeek).not.toHaveBeenCalled();
     expect(screen.getByRole("navigation", { name: "Дни недели" }).children).toHaveLength(7);
+  });
+
+  it.each([["ArrowLeft", "2026-09-06"], ["PageUp", "2026-09-06"], ["ArrowRight", "2026-09-20"], ["PageDown", "2026-09-20"]])("switches one week using %s", (key, expected) => {
+    const { onChange } = setup();
+    fireEvent.keyDown(screen.getByRole("navigation", { name: "Дни недели" }), { key });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+
+  it("leaves browser keyboard shortcuts alone and returns to today on a date-heading tap", () => {
+    const { onChange } = setup("2026-09-10");
+    fireEvent.keyDown(screen.getByRole("navigation", { name: "Дни недели" }), { key: "ArrowLeft", altKey: true });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTitle("Вернуться к сегодняшнему дню"));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith("2026-09-13");
   });
 });

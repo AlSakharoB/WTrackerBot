@@ -1,5 +1,18 @@
 import assert from "node:assert/strict";
 
+async function swipeWeek(session, deltaX, deltaY = 0, cancel = false) {
+  const bounds = await session.page.locator(".ration-week__days").boundingBox();
+  assert(bounds);
+  const cdp = await session.context.newCDPSession(session.page);
+  const x = bounds.x + bounds.width * (deltaX > 0 ? 0.25 : 0.75);
+  const y = bounds.y + bounds.height / 2;
+  const point = (progress) => ({ x: x + deltaX * progress, y: y + deltaY * progress, id: 1, radiusX: 4, radiusY: 4, force: 1 });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point(0)] });
+  for (const progress of [0.2, 0.4, 0.7, 1]) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(progress)] });
+  await cdp.send("Input.dispatchTouchEvent", { type: cancel ? "touchCancel" : "touchEnd", touchPoints: [] });
+  await cdp.detach();
+}
+
 export async function auditVisualPolish(openPage, diagnostics) {
   const week = await openPage("ration");
   const weekRequests = () => week.requests.filter((request) => request.includes("/ration/week?"));
@@ -9,9 +22,23 @@ export async function auditVisualPolish(openPage, diagnostics) {
   await week.page.locator(".ration-week__days button").first().click();
   await week.page.waitForFunction(() => document.querySelector(".ration-week__days .is-selected strong")?.textContent === "7");
   assert.equal(weekRequests().length, 1, "Selecting another day in the week must reuse its summary");
-  await week.page.getByRole("button", { name: "Предыдущий день" }).click();
+  assert.equal(await week.page.getByRole("button", { name: /^(Предыдущий|Следующий) день$/ }).count(), 0);
+  await swipeWeek(week, 100);
   await week.page.waitForFunction(() => document.querySelector(".ration-week__days button strong")?.textContent === "31");
+  assert.equal(await week.page.locator(".ration-week__days .is-selected strong").textContent(), "31", "A swipe must preserve the selected weekday and consume its generated click");
   assert.equal(weekRequests().length, 2, "Crossing a week boundary must load one new summary");
+  await swipeWeek(week, -100);
+  await week.page.waitForFunction(() => document.querySelector(".ration-week__days .is-selected strong")?.textContent === "7");
+  assert.equal(weekRequests().length, 2, "Returning to a cached week must not reload its summary");
+  await swipeWeek(week, -20);
+  await swipeWeek(week, 5, -90);
+  await swipeWeek(week, 100, 0, true);
+  assert.equal(await week.page.locator(".ration-week__days .is-selected strong").textContent(), "7", "Short, vertical and cancelled gestures must not change the selected date");
+  const selected = week.page.locator(".ration-week__days .is-selected");
+  await selected.focus();
+  await week.page.keyboard.press("ArrowRight");
+  await week.page.waitForFunction(() => document.querySelector(".ration-week__days .is-selected strong")?.textContent === "14");
+  assert(await selected.evaluate((element) => element === document.activeElement), "Keyboard week navigation must retain focus");
   diagnostics.push({ check: "weekly-navigation-cache", result: { requests: weekRequests() } });
   await week.capture("ration-previous-week");
   await week.close();

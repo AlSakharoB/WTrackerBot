@@ -320,7 +320,7 @@ describe("Mini App routes", () => {
 
   it("marks a future ration date explicitly", () => {
     renderApp("/ration");
-    fireEvent.click(screen.getByRole("button", { name: "Следующий день" }));
+    fireEvent.keyDown(screen.getByRole("navigation", { name: "Дни недели" }), { key: "ArrowRight" });
     expect(screen.getByText("Будущая дата")).toBeInTheDocument();
     expect(screen.getByText("Будущий день")).toBeInTheDocument();
   });

@@ -1,7 +1,7 @@
 .date-switcher {
   height: 66px;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   margin-bottom: 12px;

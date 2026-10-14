@@ -1,3 +1,9 @@
+export function shiftWeek(value: string, direction: -1 | 1): string {
+  const day = new Date(`${value}T12:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + direction * 7);
+  return day.toISOString().slice(0, 10);
+}
+
 export function weekDates(value: string): string[] {
   const start = new Date(`${value}T12:00:00Z`);
   start.setUTCDate(start.getUTCDate() - (start.getUTCDay() + 6) % 7);

@@ -31,7 +31,6 @@ import { AnimatedNumber } from "../components/ui/AnimatedNumber";
 import { useTweenNumber } from "../components/ui/useTweenNumber";
 import {
   ConfirmDialog,
-  DateSwitcher,
   ErrorState,
   ProgressBar,
   useToast,
@@ -197,10 +196,9 @@ function DayBalance({ day }: { day: RationDay }) {
   );
 }
 
-function RationPageSkeleton({ date, today, initData, onChange }: { date: string; today: string; initData: string; onChange: (value: string) => void }) {
+function RationPageSkeleton() {
   return (
-    <div className="page page--ration">
-      <RationWeek value={date} today={today} initData={initData} onChange={onChange} />
+    <>
       <section className="ration-balance ration-page-skeleton" aria-busy="true" aria-label="Загрузка рациона">
         <span className="sr-only">Загрузка рациона</span>
         <i /><i /><i /><i />
@@ -208,7 +206,7 @@ function RationPageSkeleton({ date, today, initData, onChange }: { date: string;
       <section className="ration-meals ration-meals-skeleton" aria-hidden="true">
         <i /><i /><i />
       </section>
-    </div>
+    </>
   );
 }
 
@@ -278,12 +276,12 @@ export function RationPage() {
   };
 
   if (authorized && rationQuery.isPending) {
-    return <RationPageSkeleton date={date} today={today} initData={initData} onChange={setDate} />;
+    return <div className="page page--ration"><RationWeek value={date} today={today} initData={initData} onChange={setDate} /><RationPageSkeleton /></div>;
   }
   if (authorized && rationQuery.error && !rationQuery.data) {
     return (
-      <div className="page">
-        <DateSwitcher value={date} today={today} isFuture={date > today} onChange={setDate} />
+      <div className="page page--ration">
+        <RationWeek value={date} today={today} initData={initData} onChange={setDate} />
         <ErrorState title="Не удалось загрузить рацион" message={rationQuery.error.message} onRetry={() => void rationQuery.refetch()} />
       </div>
     );

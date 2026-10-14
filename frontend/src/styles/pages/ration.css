@@ -82,6 +82,7 @@
 
 .ration-meals { min-width: 0; padding-top: 12px; }
 .ration-week { min-width: 0; margin-bottom: 12px; }
+.ration-week__swipe { touch-action: pan-y; user-select: none; }
 .ration-week .date-switcher { height: 44px; margin-bottom: 6px; }
 .ration-week .date-switcher__value > span { display: none; }
 .ration-week__days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
@@ -242,6 +243,7 @@
   .page--ration { display: grid; grid-template-columns: minmax(330px, 390px) minmax(0, 1fr); gap: 22px; align-items: start; }
   .page--ration > .date-switcher { grid-column: 1 / -1; margin-bottom: 0; }
   .page--ration > .ration-week { grid-column: 1 / -1; width: min(100%, 520px); justify-self: center; margin-bottom: 0; }
+  .page--ration > .empty-state { grid-column: 1 / -1; }
   .ration-balance { grid-column: 1; }
   .ration-meals { grid-column: 2; padding-top: 0; }
   .meals-list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }

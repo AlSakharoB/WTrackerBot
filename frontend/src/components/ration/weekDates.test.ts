@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { weekDates } from "./weekDates";
+import { shiftWeek, weekDates } from "./weekDates";
 
 describe("ration week dates", () => {
+  it("shifts by exactly seven calendar days across years and DST", () => {
+    expect(shiftWeek("2026-01-01", -1)).toBe("2025-12-25");
+    expect(shiftWeek("2025-12-29", 1)).toBe("2026-01-05");
+    expect(shiftWeek("2026-03-29", -1)).toBe("2026-03-22");
+    expect(shiftWeek("2026-03-29", 1)).toBe("2026-04-05");
+  });
+
   it("uses Monday through Sunday even across a year boundary", () => {
     expect(weekDates("2026-01-01")).toEqual([
       "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-01",

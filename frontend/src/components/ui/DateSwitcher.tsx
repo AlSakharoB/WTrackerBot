@@ -1,6 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-
-import { IconButton } from "./IconButton";
+import { CalendarDays } from "lucide-react";
 
 interface DateSwitcherProps {
   value: string;
@@ -11,15 +9,6 @@ interface DateSwitcherProps {
 
 function calendarDate(value: string): Date {
   return new Date(`${value}T12:00:00`);
-}
-
-function addDays(value: string, days: number): string {
-  const next = calendarDate(value);
-  next.setDate(next.getDate() + days);
-  const year = next.getFullYear();
-  const month = String(next.getMonth() + 1).padStart(2, "0");
-  const day = String(next.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatDate(value: string, today: string): string {
@@ -39,11 +28,6 @@ export function DateSwitcher({
   const isToday = value === today;
   return (
     <div className="date-switcher" aria-label="Выбор даты">
-      <IconButton
-        label="Предыдущий день"
-        icon={ChevronLeft}
-        onClick={() => onChange(addDays(value, -1))}
-      />
       <button
         type="button"
         className="date-switcher__value"
@@ -62,11 +46,6 @@ export function DateSwitcher({
           <small><CalendarDays aria-hidden="true" /> Будущая дата</small>
         )}
       </button>
-      <IconButton
-        label="Следующий день"
-        icon={ChevronRight}
-        onClick={() => onChange(addDays(value, 1))}
-      />
     </div>
   );
 }
