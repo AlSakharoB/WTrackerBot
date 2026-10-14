@@ -33,6 +33,9 @@ export interface TelegramWebApp {
   expand(): void;
   isVersionAtLeast?(version: string): boolean;
   requestFullscreen?(): void;
+  setHeaderColor?(color: string): void;
+  setBackgroundColor?(color: string): void;
+  setBottomBarColor?(color: string): void;
   close?(): void;
   onEvent(event: TelegramEvent, callback: () => void): void;
   offEvent(event: TelegramEvent, callback: () => void): void;

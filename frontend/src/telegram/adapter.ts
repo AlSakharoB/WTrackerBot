@@ -7,6 +7,7 @@ export interface TelegramViewport {
 }
 
 const EMPTY_INSET: TelegramInset = { top: 0, right: 0, bottom: 0, left: 0 };
+const MOBILE_FULLSCREEN_PLATFORMS = new Set(["ios", "android", "android_x"]);
 
 export interface TelegramAdapter {
   readonly initData: string;
@@ -16,6 +17,7 @@ export interface TelegramAdapter {
   readonly isDevelopmentPreview: boolean;
   readonly viewport: TelegramViewport;
   initialize(): void;
+  setChromeColor(color: string): void;
   subscribeTheme(callback: () => void): () => void;
   subscribeViewport(callback: () => void): () => void;
   bindBackButton(callback: () => void): () => void;
@@ -52,7 +54,8 @@ class WebAppTelegramAdapter implements TelegramAdapter {
     this.webApp.ready();
     this.webApp.expand();
     if (
-      this.webApp.requestFullscreen
+      MOBILE_FULLSCREEN_PLATFORMS.has(this.platform.toLowerCase())
+      && this.webApp.requestFullscreen
       && (this.webApp.isVersionAtLeast?.("8.0") ?? true)
       && !this.webApp.isFullscreen
     ) {
@@ -67,6 +70,21 @@ class WebAppTelegramAdapter implements TelegramAdapter {
   public subscribeTheme(callback: () => void): () => void {
     this.webApp.onEvent("themeChanged", callback);
     return () => this.webApp.offEvent("themeChanged", callback);
+  }
+
+  public setChromeColor(color: string): void {
+    const setters = [
+      this.webApp.setHeaderColor,
+      this.webApp.setBackgroundColor,
+      this.webApp.setBottomBarColor,
+    ];
+    for (const setter of setters) {
+      try {
+        setter?.call(this.webApp, color);
+      } catch {
+        // Telegram clients can expose methods before fully supporting them.
+      }
+    }
   }
 
   public subscribeViewport(callback: () => void): () => void {
@@ -122,6 +140,8 @@ class BrowserDevelopmentAdapter implements TelegramAdapter {
   }
 
   public initialize(): void {}
+
+  public setChromeColor(): void {}
 
   public subscribeTheme(callback: () => void): () => void {
     const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");

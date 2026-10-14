@@ -5,7 +5,8 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--color-canvas); }
+html, body, #root { background: var(--color-background); }
+html, #root { min-height: 100%; }
 body {
   margin: 0;
   min-width: 320px;
@@ -57,4 +58,8 @@ h1, h2, h3 { letter-spacing: 0; }
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+@media (min-width: 800px) {
+  html { background: var(--color-canvas); }
 }

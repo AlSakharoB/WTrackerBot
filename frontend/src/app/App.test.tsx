@@ -20,6 +20,7 @@ function createPreviewAdapter(overrides: Partial<TelegramAdapter> = {}): Telegra
       contentSafeArea: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     initialize: vi.fn(),
+    setChromeColor: vi.fn(),
     subscribeTheme: vi.fn(() => () => undefined),
     subscribeViewport: vi.fn(() => () => undefined),
     bindBackButton: vi.fn(() => () => undefined),

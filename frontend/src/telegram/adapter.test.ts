@@ -79,6 +79,32 @@ describe("createTelegramAdapter", () => {
     expect(hide).toHaveBeenCalledOnce();
   });
 
+  it("synchronizes Telegram chrome with the application background", () => {
+    const setHeaderColor = vi.fn();
+    const setBackgroundColor = vi.fn();
+    const setBottomBarColor = vi.fn();
+    window.Telegram = {
+      WebApp: {
+        initData: "signed-data",
+        platform: "ios",
+        colorScheme: "dark",
+        ready: vi.fn(),
+        expand: vi.fn(),
+        setHeaderColor,
+        setBackgroundColor,
+        setBottomBarColor,
+        onEvent: vi.fn(),
+        offEvent: vi.fn(),
+      },
+    };
+
+    createTelegramAdapter().setChromeColor("#111814");
+
+    expect(setHeaderColor).toHaveBeenCalledWith("#111814");
+    expect(setBackgroundColor).toHaveBeenCalledWith("#111814");
+    expect(setBottomBarColor).toHaveBeenCalledWith("#111814");
+  });
+
   it("keeps expand as a fallback when fullscreen is unsupported", () => {
     const expand = vi.fn();
     const requestFullscreen = vi.fn();
@@ -90,6 +116,29 @@ describe("createTelegramAdapter", () => {
         ready: vi.fn(),
         expand,
         isVersionAtLeast: vi.fn(() => false),
+        requestFullscreen,
+        onEvent: vi.fn(),
+        offEvent: vi.fn(),
+      },
+    };
+
+    createTelegramAdapter().initialize();
+
+    expect(expand).toHaveBeenCalledOnce();
+    expect(requestFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("does not request fullscreen in Telegram Desktop", () => {
+    const expand = vi.fn();
+    const requestFullscreen = vi.fn();
+    window.Telegram = {
+      WebApp: {
+        initData: "signed-data",
+        platform: "tdesktop",
+        colorScheme: "light",
+        ready: vi.fn(),
+        expand,
+        isVersionAtLeast: vi.fn(() => true),
         requestFullscreen,
         onEvent: vi.fn(),
         offEvent: vi.fn(),

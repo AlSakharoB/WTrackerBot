@@ -12,6 +12,19 @@ import type { TelegramAdapter } from "./adapter";
 const PRIMARY_ROUTES = new Set(["/ration", "/food", "/weight", "/profile"]);
 const TELEGRAM_HEADER_GAP = 8;
 
+function cssColorToHex(color: string): string | null {
+  const values = color.match(/\d+(?:\.\d+)?/g)?.map(Number);
+  if (!values || values.length < 3 || (values.length >= 4 && values[3] === 0)) {
+    return null;
+  }
+  const channels = values.slice(0, 3);
+  return `#${channels
+    .map((channel) => Math.max(0, Math.min(255, Math.round(channel)))
+      .toString(16)
+      .padStart(2, "0"))
+    .join("")}`;
+}
+
 interface TelegramHeaderMetrics {
   controlsHeight: number;
   minimumHeight: number;
@@ -63,9 +76,14 @@ export function useTelegramEnvironment(
 ) {
   useEffect(() => {
     const applyTheme = () => {
+      const effectiveTheme = themeMode === "system" ? telegram.colorScheme : themeMode;
       document.documentElement.dataset.themeMode = themeMode;
-      document.documentElement.dataset.theme =
-        themeMode === "system" ? telegram.colorScheme : themeMode;
+      document.documentElement.dataset.theme = effectiveTheme;
+      const computedBackground = window.getComputedStyle(document.body).backgroundColor;
+      telegram.setChromeColor(
+        cssColorToHex(computedBackground)
+          ?? (effectiveTheme === "dark" ? "#111814" : "#f7f9f8"),
+      );
     };
     applyTheme();
     return telegram.subscribeTheme(applyTheme);
