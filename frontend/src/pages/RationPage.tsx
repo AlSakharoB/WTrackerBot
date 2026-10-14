@@ -4,8 +4,8 @@ import {
   Goal,
   Plus,
 } from "lucide-react";
-import { AnimatePresence } from "motion/react";
-import { useRef, useState, type CSSProperties } from "react";
+import { AnimatePresence, motion, useMotionTemplate } from "motion/react";
+import { useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
@@ -24,7 +24,11 @@ import { useMiniAppContext } from "../app/context";
 import { RationAddSheet } from "../components/ration/RationAddSheet";
 import { RationEntrySheet } from "../components/ration/RationEntrySheet";
 import { RationMeals } from "../components/ration/RationMeals";
+import { RationWeek } from "../components/ration/RationWeek";
+import { weekDates } from "../components/ration/weekDates";
 import { moveEntryInDay } from "../components/ration/move-entry";
+import { AnimatedNumber } from "../components/ui/AnimatedNumber";
+import { useTweenNumber } from "../components/ui/useTweenNumber";
 import {
   ConfirmDialog,
   DateSwitcher,
@@ -110,29 +114,27 @@ function MacroOverview({ day }: { day: RationDay }) {
   const hasMacros = macros.protein + macros.fat + macros.carbs > 0;
   const proteinEnd = Math.min(100, Math.max(0, macros.protein));
   const fatEnd = Math.min(100, Math.max(proteinEnd, proteinEnd + macros.fat));
-  const chartStyle: CSSProperties = hasMacros
-    ? {
-        background: `conic-gradient(var(--color-macro-protein) 0 ${proteinEnd}%, var(--color-macro-fat) ${proteinEnd}% ${fatEnd}%, var(--color-macro-carbs) ${fatEnd}% 100%)`,
-      }
-    : {};
+  const animatedProtein = useTweenNumber(proteinEnd);
+  const animatedFat = useTweenNumber(fatEnd);
+  const background = useMotionTemplate`conic-gradient(var(--color-macro-protein) 0 ${animatedProtein}%, var(--color-macro-fat) ${animatedProtein}% ${animatedFat}%, var(--color-macro-carbs) ${animatedFat}% 100%)`;
   return (
     <div className="macro-overview">
-      <div
+      <motion.div
         className={`macro-ring ${hasMacros ? "" : "is-empty"} ${energySize}`}
-        style={chartStyle}
+        style={{ background: hasMacros ? background : undefined }}
         role="img"
-        aria-label={hasMacros ? `Белки ${macros.protein}%, жиры ${macros.fat}%, углеводы ${macros.carbs}%` : "Данные о БЖУ отсутствуют"}
+        aria-label={`${energyText} ккал. ${hasMacros ? `Белки ${macros.protein}%, жиры ${macros.fat}%, углеводы ${macros.carbs}%` : "Данные о БЖУ отсутствуют"}`}
       >
         <div>
-          <strong title={`${energyText} ккал`}>{energyText}</strong>
+          <AnimatedNumber value={numeric(totals.energy_kcal)} format={format} energy />
           <span>{day.goal?.energy_kcal ? `из ${formatValue(day.goal.energy_kcal, format)} ккал` : "ккал"}</span>
           {!hasMacros && <small>Нет данных БЖУ</small>}
         </div>
-      </div>
+      </motion.div>
       <div className="macro-legend">
-        <div className="macro-legend__protein"><i aria-hidden="true" /><span>Белки <small>{macros.protein}%</small></span><strong>{formatValue(totals.protein_g, format)} г <small>{day.goal?.protein_g ? `/ ${formatValue(day.goal.protein_g, format)} г` : "· цель не задана"}</small></strong></div>
-        <div className="macro-legend__fat"><i aria-hidden="true" /><span>Жиры <small>{macros.fat}%</small></span><strong>{formatValue(totals.fat_g, format)} г <small>{day.goal?.fat_g ? `/ ${formatValue(day.goal.fat_g, format)} г` : "· цель не задана"}</small></strong></div>
-        <div className="macro-legend__carbs"><i aria-hidden="true" /><span>Углеводы <small>{macros.carbs}%</small></span><strong>{formatValue(totals.carbs_g, format)} г <small>{day.goal?.carbs_g ? `/ ${formatValue(day.goal.carbs_g, format)} г` : "· цель не задана"}</small></strong></div>
+        <div className="macro-legend__protein"><i aria-hidden="true" /><span>Белки <small>{macros.protein}%</small></span><strong><AnimatedNumber value={numeric(totals.protein_g)} format={format} suffix=" г" /><small>{day.goal?.protein_g ? `/ ${formatValue(day.goal.protein_g, format)} г` : "· цель не задана"}</small></strong></div>
+        <div className="macro-legend__fat"><i aria-hidden="true" /><span>Жиры <small>{macros.fat}%</small></span><strong><AnimatedNumber value={numeric(totals.fat_g)} format={format} suffix=" г" /><small>{day.goal?.fat_g ? `/ ${formatValue(day.goal.fat_g, format)} г` : "· цель не задана"}</small></strong></div>
+        <div className="macro-legend__carbs"><i aria-hidden="true" /><span>Углеводы <small>{macros.carbs}%</small></span><strong><AnimatedNumber value={numeric(totals.carbs_g)} format={format} suffix=" г" /><small>{day.goal?.carbs_g ? `/ ${formatValue(day.goal.carbs_g, format)} г` : "· цель не задана"}</small></strong></div>
       </div>
     </div>
   );
@@ -177,7 +179,7 @@ function DayBalance({ day }: { day: RationDay }) {
           </div>
         </div>
       </div>
-      <MacroOverview day={day} />
+      <MacroOverview key={day.date} day={day} />
       {hasEnergyGoal ? (
         <div className="ration-energy-progress">
           <span>Калории</span>
@@ -195,10 +197,10 @@ function DayBalance({ day }: { day: RationDay }) {
   );
 }
 
-function RationPageSkeleton({ date, today, onChange }: { date: string; today: string; onChange: (value: string) => void }) {
+function RationPageSkeleton({ date, today, initData, onChange }: { date: string; today: string; initData: string; onChange: (value: string) => void }) {
   return (
     <div className="page page--ration">
-      <DateSwitcher value={date} today={today} isFuture={date > today} onChange={onChange} />
+      <RationWeek value={date} today={today} initData={initData} onChange={onChange} />
       <section className="ration-balance ration-page-skeleton" aria-busy="true" aria-label="Загрузка рациона">
         <span className="sr-only">Загрузка рациона</span>
         <i /><i /><i /><i />
@@ -211,7 +213,7 @@ function RationPageSkeleton({ date, today, onChange }: { date: string; today: st
 }
 
 export function RationPage() {
-  const { user, profile, initData } = useMiniAppContext();
+  const { user, profile, initData, hapticFeedback } = useMiniAppContext();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -247,7 +249,7 @@ export function RationPage() {
       queryClient.setQueryData<RationDay>(queryKey, (current) => current ? moveEntryInDay(current, entry.id, meal) : current);
       return { previous };
     },
-    onSuccess: () => showToast("Запись перенесена"),
+    onSuccess: () => { hapticFeedback?.("success"); showToast("Запись перенесена"); },
     onError: (error, variables, context) => {
       if (context?.previous) queryClient.setQueryData(["ration", variables.date], context.previous);
       showToast(error instanceof APIError && error.status === 409 ? "Запись уже изменилась. Рацион обновлён, повторите перенос." : error.message, "error");
@@ -262,7 +264,10 @@ export function RationPage() {
     onSuccess: () => { setDeletingEntry(null); showToast("Запись удалена"); },
     onError: (error) => showToast(error.message, "error"),
     onSettled: async (_data, _error, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ["ration", variables.date] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["ration", variables.date] }),
+        queryClient.invalidateQueries({ queryKey: ["ration-week", weekDates(variables.date)[0]] }),
+      ]);
       saving.current = false;
     },
   });
@@ -273,7 +278,7 @@ export function RationPage() {
   };
 
   if (authorized && rationQuery.isPending) {
-    return <RationPageSkeleton date={date} today={today} onChange={setDate} />;
+    return <RationPageSkeleton date={date} today={today} initData={initData} onChange={setDate} />;
   }
   if (authorized && rationQuery.error && !rationQuery.data) {
     return (
@@ -290,6 +295,7 @@ export function RationPage() {
   const refreshRation = (affectedDate?: string) => {
     setSelectedEntry(null);
     void queryClient.invalidateQueries({ queryKey: ["ration", date] });
+    void queryClient.invalidateQueries({ queryKey: ["ration-week"] });
     if (affectedDate && affectedDate !== date) {
       void queryClient.invalidateQueries({ queryKey: ["ration", affectedDate] });
     }
@@ -304,13 +310,13 @@ export function RationPage() {
 
   return (
     <div className="page page--ration">
-      <DateSwitcher value={date} today={today} isFuture={day.is_future} onChange={setDate} />
+      <RationWeek value={date} today={today} initData={initData} day={day} onChange={setDate} />
 
       <DayBalance day={day} />
 
       <section className="ration-meals" aria-labelledby="meals-title">
         <div className="section-heading"><div><h2 id="meals-title">Приёмы пищи</h2><p>{day.entry_count === 0 ? "Рацион пока пуст" : `Всего записей: ${day.entry_count}`}</p></div><Link className="button-primary button-with-icon" to={addTarget}><Plus aria-hidden="true" size={18} />Добавить</Link></div>
-        <RationMeals key={date} meals={day.meals} date={date} format={day.number_format} formatValue={formatValue} disabled={!authorized || moveMutation.isPending || deleteMutation.isPending} onSelectEntry={setSelectedEntry} onMoveEntry={(entry, meal) => {
+        <RationMeals key={date} meals={day.meals} date={date} format={day.number_format} formatValue={formatValue} disabled={!authorized || moveMutation.isPending || deleteMutation.isPending} onPickUp={() => hapticFeedback?.("selection")} onSelectEntry={setSelectedEntry} onMoveEntry={(entry, meal) => {
           if (saving.current || !authorized) return;
           saving.current = true;
           moveMutation.mutate({ entry, meal, date });

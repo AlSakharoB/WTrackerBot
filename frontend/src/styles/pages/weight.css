@@ -27,7 +27,7 @@
 
 .weight-dynamics { position: relative; }
 .weight-dynamics > .section-heading { margin-bottom: 12px; }
-.weight-dynamics > .section-heading h2 { font-size: 17px; }
+.weight-dynamics > .section-heading h2 { font-size: var(--type-section); }
 .weight-dynamics > .section-heading p { font-variant-numeric: tabular-nums; }
 .range-select { min-width: 148px; height: var(--form-control-height); display: flex; align-items: center; gap: 6px; padding: 0 7px 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); }
 .range-select svg { width: 17px; flex: 0 0 17px; color: var(--color-text-secondary); }
@@ -57,11 +57,14 @@
 .weight-chart :is(.recharts-cartesian-axis-tick-value, .recharts-label) { fill: var(--color-text-secondary); }
 .weight-chart-point { outline: none; cursor: pointer; }
 .weight-chart-hit-area { fill: transparent; stroke: transparent; pointer-events: all; }
-.weight-chart-dot { fill: var(--color-surface); stroke: var(--color-action-primary); stroke-width: 3px; pointer-events: none; }
+.weight-chart-dot { fill: var(--color-surface); stroke: var(--color-action-primary); stroke-width: 2.5px; pointer-events: none; }
+.weight-chart-halo { fill: var(--color-action-soft); pointer-events: none; }
+.weight-chart-point.is-selected .weight-chart-dot { fill: var(--color-action-primary); }
 .weight-chart-point:focus-visible .weight-chart-dot { fill: var(--color-action-primary); stroke: var(--color-surface); stroke-width: 4px; }
 .weight-tooltip { max-width: min(190px, calc(100vw - 32px)); min-width: 132px; display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-small); color: var(--color-text-primary); background: var(--color-surface); box-shadow: var(--shadow-tooltip); }
 .weight-tooltip span, .weight-tooltip small { color: var(--color-text-secondary); font-size: 11px; }
 .weight-tooltip strong { font-size: 15px; }
+.weight-tooltip__note { max-width: 170px; white-space: normal; overflow-wrap: anywhere; padding-top: 5px; margin-top: 3px; border-top: 1px solid var(--color-border); }
 .weight-tooltip--selected { position: absolute; z-index: 4; top: 8px; right: 8px; pointer-events: auto; }
 .weight-tooltip--selected button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px; padding: 0 8px; border: 0; border-top: 1px solid var(--color-border); color: var(--color-link); background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; }
 .weight-tooltip--selected button svg { width: 14px; height: 14px; }
@@ -72,7 +75,12 @@
 .weight-chart-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 15px; margin-top: 10px; color: var(--color-text-secondary); font-size: 11px; }
 .weight-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .weight-chart-legend i { width: 21px; height: 3px; display: inline-block; border-radius: 2px; background: var(--color-action-primary); }
-.weight-chart-legend i.is-average { height: 2px; background: repeating-linear-gradient(to right, var(--color-text-secondary) 0 5px, transparent 5px 8px); }
+.weight-chart-legend i.is-average { height: 2px; background: repeating-linear-gradient(to right, var(--color-chart-average) 0 5px, transparent 5px 8px); }
+.weight-period-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px; padding-block: 12px; border-block: 1px solid var(--color-border); }
+.weight-period-stats > div { min-width: 0; display: grid; justify-items: center; gap: 4px; padding-inline: 4px; }
+.weight-period-stats > div + div { border-left: 1px solid var(--color-border); }
+.weight-period-stats span { font-size: var(--type-caption); color: var(--color-text-secondary); }
+.weight-period-stats strong { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .weight-chart-legend i.is-target { height: 2px; background: repeating-linear-gradient(to right, var(--color-energy) 0 6px, transparent 6px 10px); }
 
 .chart-empty, .weight-chart-placeholder { position: relative; min-height: 280px; overflow: hidden; border-bottom: 1px solid var(--color-border); }

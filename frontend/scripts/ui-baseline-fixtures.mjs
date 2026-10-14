@@ -114,7 +114,7 @@ export function createFixtures(theme, state = "populated") {
         const type = ["breakfast", "lunch", "dinner", "snack", "other"][i];
         const mealEntries = rationEntries.filter((entry) => entry.meal_type === type);
         return { type, label, entries: mealEntries, totals: sum(mealEntries.map((entry) => entry.nutrition)) };
-      }),
+      }).filter((meal) => meal.type !== "other" || meal.entries.length > 0),
     },
     "/ration/sources": { items: empty ? [] : [...ingredients, ...dishes].map((item) => ({ id: item.id, type: item.components ? "dish" : "ingredient", name: item.name, default_grams: "100", nutrition_per_100g: item.nutrition_per_100g, usage_count: 4, last_used_at: NOW })) },
     "/weight": {

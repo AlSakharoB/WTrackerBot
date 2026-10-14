@@ -21,6 +21,8 @@
   --color-macro-protein: #20885f;
   --color-macro-fat: #d65e55;
   --color-macro-carbs: #337daf;
+  --color-chart-average: #426f9b;
+  --color-chart-area: rgb(13 92 62 / 7%);
   --color-scrim: rgb(10 16 13 / 58%);
   --shadow-tooltip: 0 2px 8px rgb(16 30 23 / 10%);
   --shadow-sheet: 0 -8px 30px rgb(19 36 28 / 12%);
@@ -35,6 +37,14 @@
   --space-8: 32px;
   --control-min-size: 44px;
   --form-control-height: 48px;
+  --icon-size: 20px;
+  --row-icon-size: 18px;
+  --list-row-height: 64px;
+  --list-row-height-detailed: 72px;
+  --type-section: 18px;
+  --type-body: 14px;
+  --type-label: 12px;
+  --type-caption: 11px;
   --bottom-nav-height: 66px;
   --app-stable-height: 100dvh;
   --app-safe-top: 0px;
@@ -71,6 +81,8 @@
   --color-macro-protein: #58c493;
   --color-macro-fat: #f08077;
   --color-macro-carbs: #68afe0;
+  --color-chart-average: #82bce6;
+  --color-chart-area: rgb(117 215 168 / 9%);
   --color-scrim: rgb(0 0 0 / 68%);
   --shadow-tooltip: 0 2px 8px rgb(0 0 0 / 24%);
   --shadow-sheet: 0 -8px 30px rgb(0 0 0 / 32%);

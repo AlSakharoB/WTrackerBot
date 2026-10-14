@@ -81,6 +81,7 @@
   transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 .icon-button--small { width: var(--control-min-size); height: var(--control-min-size); flex-basis: var(--control-min-size); }
+.icon-button > svg, .button-with-icon > svg { width: var(--icon-size); height: var(--icon-size); flex-shrink: 0; stroke-width: 1.8; }
 
 .empty-state {
   min-height: 190px;

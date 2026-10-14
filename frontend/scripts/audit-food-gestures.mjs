@@ -113,6 +113,7 @@ export async function auditFoodGestures(openPage, diagnostics) {
     assert.deepEqual(Object.keys(session.mutations[0].body).sort(), ["expected_updated_at", "meal_type"]);
     assert.equal(session.mutations[0].body.meal_type, "lunch");
     assert.equal(await session.page.locator(".macro-ring strong").textContent(), calories, "Transfer must preserve daily calories");
+    assert.deepEqual(await session.page.evaluate(() => window.__auditHaptics), ["selection", "success"], "Transfer must acknowledge pickup and successful saving");
     await session.capture(`ration-moved-${mode}`);
     diagnostics.push({ check: `ration-transfer-${mode}`, result: session.mutations });
     await session.close();

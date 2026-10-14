@@ -18,6 +18,15 @@ const day: RationDay = {
 };
 
 describe("optimistic meal transfers", () => {
+  it("creates the Other destination when the API omits that empty meal", () => {
+    const source = { ...day, meals: day.meals.filter((meal) => meal.type !== "other") };
+    const moved = moveEntryInDay(source, entry.id, "other");
+    expect(moved.meals.find((meal) => meal.type === "other")?.entries).toEqual([{ ...entry, meal_type: "other" }]);
+    expect(moved.meals[0].entries).toEqual([]);
+    expect(moved.totals).toBe(source.totals);
+    expect(source.meals).toHaveLength(4);
+  });
+
   it("moves a single entry and recalculates both meals without changing daily nutrition", () => {
     const moved = moveEntryInDay(day, entry.id, "lunch");
     expect(moved.meals[0].entries).toEqual([]);

@@ -93,6 +93,9 @@ describe("WeightChart", () => {
     fireEvent.click(point);
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.getByRole("status")).toHaveTextContent("81,75 кг");
+    expect(screen.getByRole("status")).toHaveTextContent("После тренировки");
+    expect(point).toHaveClass("is-selected");
+    expect(document.querySelectorAll(".weight-chart-halo")).toHaveLength(1);
 
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -103,6 +106,16 @@ describe("WeightChart", () => {
     fireEvent.click(screen.getByRole("button", { name: "Изменить" }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "2" }));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not capture pointer events on the selected point's edit button", async () => {
+    const { chart } = renderChart();
+    const capture = vi.fn();
+    chart.setPointerCapture = capture;
+    fireEvent.click(await screen.findByRole("button", { name: /81.75 кг/ }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Изменить" }), { pointerId: 1, pointerType: "mouse", button: 0 });
+    expect(capture).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
   it("commits one mouse pan after pointerup and not during moves", () => {
@@ -121,6 +134,15 @@ describe("WeightChart", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /81.75 кг/ }));
     expect(screen.getByRole("status")).toHaveTextContent("81,75 кг");
+  });
+
+  it("selects a tapped point even when pointer capture retargets pointerup to the plot", async () => {
+    const { chart } = renderChart();
+    const point = await screen.findByRole("button", { name: /81.75 кг/ });
+    fireEvent.pointerDown(point, { pointerId: 1, pointerType: "touch", button: 0, clientX: 120, clientY: 100 });
+    fireEvent.pointerUp(chart, { pointerId: 1, pointerType: "touch", clientX: 120, clientY: 100 });
+    expect(screen.getByRole("status")).toHaveTextContent("После тренировки");
+    expect(point).toHaveClass("is-selected");
   });
 
   it("leaves a vertical one-pointer gesture to page scrolling", () => {

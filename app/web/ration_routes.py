@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -36,6 +37,8 @@ from app.web.ration_schemas import (
     RationSourceListResponse,
     RationSourceResponse,
     RationSummaryResponse,
+    RationWeekDayResponse,
+    RationWeekResponse,
 )
 
 router = APIRouter(prefix="/api/v1/ration")
@@ -53,6 +56,7 @@ DEFAULT_MEALS = (
     MealType.DINNER,
     MealType.SNACK,
 )
+MAX_WEEK_START = date(9999, 12, 25)
 
 
 def diary_service(session: DatabaseSession) -> DiaryService:
@@ -272,6 +276,38 @@ async def list_ration_sources(
     else:
         items.sort(key=lambda item: (item.name.casefold(), item.type, item.id))
     return RationSourceListResponse(items=items[:limit])
+
+
+@router.get("/week", response_model=RationWeekResponse)
+async def get_ration_week(
+    user: CurrentUser,
+    session: DatabaseSession,
+    week_start: Annotated[date, Query(le=MAX_WEEK_START)],
+) -> RationWeekResponse:
+    start = week_start - timedelta(days=week_start.weekday())
+    end = start + timedelta(days=6)
+    activity = {
+        item.entry_date: item
+        for item in await DiaryRepository(session).day_activity(user.id, start, end)
+    }
+    days = []
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        item = activity.get(day)
+        days.append(
+            RationWeekDayResponse(
+                date=day,
+                entry_count=item.entry_count if item else 0,
+                energy_kcal=str(item.kcal) if item else "0",
+            )
+        )
+    return RationWeekResponse(
+        week_start=start,
+        week_end=end,
+        today=local_today(user.timezone),
+        timezone=user.timezone,
+        days=days,
+    )
 
 
 @router.get("/{entry_date}", response_model=RationDayResponse)

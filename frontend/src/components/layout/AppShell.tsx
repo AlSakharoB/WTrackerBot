@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { motion } from "motion/react";
 import { Outlet, useLocation } from "react-router-dom";
 
 import type { MiniAppContext } from "../../app/context";
@@ -40,9 +41,9 @@ export function AppShell({ telegram, context }: AppShellProps) {
   return (
     <div className={`app-shell ${telegram.isTelegram ? "app-shell--telegram" : ""} ${context.preferences.compact_lists ? "is-compact" : ""}`}>
       {telegram.isTelegram && <div className="telegram-controls-spacer" aria-hidden="true" />}
-      <main ref={contentRef} className="app-content" id="main-content" tabIndex={-1}>
+      <motion.main ref={contentRef} className="app-content" id="main-content" tabIndex={-1} layoutScroll>
         <Outlet context={context} />
-      </main>
+      </motion.main>
       <BottomNavigation />
     </div>
   );

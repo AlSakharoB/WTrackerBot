@@ -11,12 +11,13 @@ interface SwipeableRowProps {
   label: string;
   open: boolean;
   disabled?: boolean;
+  layoutDisabled?: boolean;
   onOpenChange: (open: boolean) => void;
   onDelete: () => void;
   onLongPress?: () => void;
 }
 
-export function SwipeableRow({ children, label, open, disabled = false, onOpenChange, onDelete, onLongPress }: SwipeableRowProps) {
+export function SwipeableRow({ children, label, open, disabled = false, layoutDisabled = false, onOpenChange, onDelete, onLongPress }: SwipeableRowProps) {
   const ref = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ id: number; x: number; y: number; start: number; horizontal: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -59,7 +60,7 @@ export function SwipeableRow({ children, label, open, disabled = false, onOpenCh
   };
 
   return (
-    <div ref={ref} className={`swipe-row ${swiping ? "is-swiping" : ""}`} data-open={open}>
+    <motion.div ref={ref} className={`swipe-row ${swiping ? "is-swiping" : ""}`} data-open={open} layout="position" transition={{ layout: { duration: reducedMotion || layoutDisabled ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] } }}>
       <button
         type="button"
         className="swipe-row__delete"
@@ -120,6 +121,6 @@ export function SwipeableRow({ children, label, open, disabled = false, onOpenCh
         onPointerCancel={(event) => finish(event, true)}
         onLostPointerCapture={(event) => { if (event.target === event.currentTarget) finish(event, true); }}
       >{children}</motion.div>
-    </div>
+    </motion.div>
   );
 }

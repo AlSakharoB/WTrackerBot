@@ -173,6 +173,20 @@ export interface RationDay extends RationSummary {
   meals: RationMeal[];
 }
 
+export interface RationWeekDay {
+  date: string;
+  entry_count: number;
+  energy_kcal: string;
+}
+
+export interface RationWeek {
+  week_start: string;
+  week_end: string;
+  today: string;
+  timezone: string;
+  days: RationWeekDay[];
+}
+
 export interface WeightEntry {
   id: string;
   weight_kg: string;
@@ -627,6 +641,13 @@ export async function fetchRationDay(
     headers: authorizationHeaders(initData),
   });
   return parseResponse(response, "Не удалось загрузить рацион");
+}
+
+export async function fetchRationWeek(initData: string, weekStart: string, signal?: AbortSignal): Promise<RationWeek> {
+  const response = await fetch(`/api/v1/ration/week?week_start=${encodeURIComponent(weekStart)}`, {
+    headers: authorizationHeaders(initData), signal,
+  });
+  return parseResponse(response, "Не удалось загрузить неделю");
 }
 
 export async function fetchRationSummary(

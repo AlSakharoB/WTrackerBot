@@ -199,6 +199,7 @@ export function App({ telegram }: AppProps) {
     preferencesPending: preferencesMutation.isPending,
     profilePending: profileMutation.isPending,
     closeMiniApp: () => telegram.close?.(),
+    hapticFeedback: (kind) => telegram.hapticFeedback?.(kind),
   };
 
   return (

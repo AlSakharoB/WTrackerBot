@@ -29,6 +29,10 @@ export interface TelegramWebApp {
   readonly safeAreaInset?: TelegramInset;
   readonly contentSafeAreaInset?: TelegramInset;
   readonly BackButton?: TelegramBackButton;
+  readonly HapticFeedback?: {
+    selectionChanged(): void;
+    notificationOccurred(type: "success" | "warning" | "error"): void;
+  };
   ready(): void;
   expand(): void;
   isVersionAtLeast?(version: string): boolean;

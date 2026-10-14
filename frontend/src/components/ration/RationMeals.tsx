@@ -43,6 +43,7 @@ interface RationMealsProps {
   onSelectEntry: (entry: RationEntry) => void;
   onDeleteEntry: (entry: RationEntry) => void;
   onMoveEntry: (entry: RationEntry, meal: MealType) => void;
+  onPickUp?: () => void;
 }
 
 function EntrySummary({ entry, format, formatValue }: Pick<RationMealsProps, "format" | "formatValue"> & { entry: RationEntry }) {
@@ -59,7 +60,7 @@ function EntryRow({ entry, active, swiped, setSwiped, ...props }: RationMealsPro
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: entry.id, data: { entry }, disabled: props.disabled || swiped === entry.id, attributes: { roleDescription: "Переносимая запись" } });
   return (
     <div ref={setNodeRef} className={`meal-entry-source ${isDragging ? "is-dragging" : ""}`} data-entry-id={entry.id}>
-      <SwipeableRow label={entry.source_name} open={swiped === entry.id} onOpenChange={(open) => setSwiped(open ? entry.id : null)} disabled={props.disabled || active} onDelete={() => props.onDeleteEntry(entry)}>
+      <SwipeableRow label={entry.source_name} open={swiped === entry.id} onOpenChange={(open) => setSwiped(open ? entry.id : null)} disabled={props.disabled || active} layoutDisabled={active} onDelete={() => props.onDeleteEntry(entry)}>
         <div className="meal-entry">
           <button ref={setActivatorNodeRef} type="button" disabled={props.disabled} className="meal-entry__main" {...attributes} {...listeners} aria-label={`Открыть запись ${entry.source_name}`} onClick={() => props.onSelectEntry(entry)}>
             <EntrySummary entry={entry} format={props.format} formatValue={props.formatValue} />
@@ -92,6 +93,9 @@ function MealSection({ meal, active, swiped, setSwiped, ...props }: RationMealsP
 }
 
 export function RationMeals(props: RationMealsProps) {
+  const meals: RationMeal[] = props.meals.some((meal) => meal.type === "other") ? props.meals : [...props.meals, {
+    type: "other", label: "Другое", entries: [], totals: { energy_kcal: "0", protein_g: "0", fat_g: "0", carbs_g: "0" },
+  }];
   const [active, setActive] = useState<RationEntry | null>(null);
   const [swiped, setSwiped] = useState<string | null>(null);
   const reducedMotion = useReducedMotion();
@@ -104,24 +108,24 @@ export function RationMeals(props: RationMealsProps) {
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args)}
-      onDragStart={({ active: source }) => { setActive(source.data.current?.entry ?? null); setSwiped(null); }}
+      onDragStart={({ active: source }) => { setActive(source.data.current?.entry ?? null); setSwiped(null); props.onPickUp?.(); }}
       onDragCancel={() => setActive(null)}
       onDragEnd={({ over }) => {
-        if (active && over && over.id !== active.meal_type && props.meals.some((meal) => meal.type === over.id)) props.onMoveEntry(active, over.id as MealType);
+        if (active && over && over.id !== active.meal_type && meals.some((meal) => meal.type === over.id)) props.onMoveEntry(active, over.id as MealType);
         setActive(null);
       }}
       accessibility={{
         screenReaderInstructions: { draggable: "Для переноса нажмите пробел. Стрелками выберите приём пищи. Пробел подтверждает перенос, Escape отменяет." },
         announcements: {
           onDragStart: ({ active: source }) => `Выбрана запись ${source.data.current?.entry.source_name ?? ""}`,
-          onDragOver: ({ over }) => over ? `Приём пищи: ${props.meals.find((meal) => meal.type === over.id)?.label ?? ""}` : "Вне приёмов пищи",
+          onDragOver: ({ over }) => over ? `Приём пищи: ${meals.find((meal) => meal.type === over.id)?.label ?? ""}` : "Вне приёмов пищи",
           onDragEnd: ({ over }) => over ? "Перенос завершён" : "Перенос отменён",
           onDragCancel: () => "Перенос отменён",
         },
       }}
     >
       <div className={`meals-list ${active ? "is-drag-active" : ""}`}>
-        {props.meals.filter((meal) => active || meal.type !== "other" || meal.entries.length > 0).map((meal) => <MealSection key={meal.type} {...props} meal={meal} active={active} swiped={swiped} setSwiped={setSwiped} />)}
+        {meals.filter((meal) => active || meal.type !== "other" || meal.entries.length > 0).map((meal) => <MealSection key={meal.type} {...props} meal={meal} active={active} swiped={swiped} setSwiped={setSwiped} />)}
       </div>
       {createPortal(<DragOverlay dropAnimation={reducedMotion ? null : { duration: 180, easing: "ease-out" }} zIndex={90}>
         {active && <div className="meal-entry-drag-preview" aria-hidden="true"><div className="meal-entry__main"><EntrySummary entry={active} format={props.format} formatValue={props.formatValue} /></div></div>}

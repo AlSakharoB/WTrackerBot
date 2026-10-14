@@ -19,6 +19,7 @@ export interface MiniAppContext {
   preferencesPending: boolean;
   profilePending: boolean;
   closeMiniApp: () => void;
+  hapticFeedback?: (kind: "selection" | "success") => void;
 }
 
 export function useMiniAppContext() {

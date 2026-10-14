@@ -3,6 +3,33 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTelegramAdapter } from "./adapter";
 
 describe("createTelegramAdapter", () => {
+  it.each(["ios", "android", "android_x", "tdesktop"])("only triggers mobile haptics on %s", (platform) => {
+    const selectionChanged = vi.fn();
+    const notificationOccurred = vi.fn();
+    window.Telegram = { WebApp: {
+      initData: "signed-data", platform, colorScheme: "light",
+      ready: vi.fn(), expand: vi.fn(), onEvent: vi.fn(), offEvent: vi.fn(),
+      isVersionAtLeast: () => true,
+      HapticFeedback: { selectionChanged, notificationOccurred },
+    } };
+    const adapter = createTelegramAdapter();
+    adapter.hapticFeedback?.("selection");
+    adapter.hapticFeedback?.("success");
+    expect(selectionChanged).toHaveBeenCalledTimes(platform === "tdesktop" ? 0 : 1);
+    if (platform !== "tdesktop") expect(notificationOccurred).toHaveBeenCalledWith("success");
+    else expect(notificationOccurred).not.toHaveBeenCalled();
+  });
+
+  it("does not interrupt a gesture if native haptics throw", () => {
+    window.Telegram = { WebApp: {
+      initData: "signed-data", platform: "ios", colorScheme: "light",
+      ready: vi.fn(), expand: vi.fn(), onEvent: vi.fn(), offEvent: vi.fn(),
+      isVersionAtLeast: () => true,
+      HapticFeedback: { selectionChanged: () => { throw new Error("unsupported"); }, notificationOccurred: vi.fn() },
+    } };
+    expect(() => createTelegramAdapter().hapticFeedback?.("selection")).not.toThrow();
+  });
+
   afterEach(() => {
     delete window.Telegram;
   });

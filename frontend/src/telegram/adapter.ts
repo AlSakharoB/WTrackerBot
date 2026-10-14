@@ -22,6 +22,7 @@ export interface TelegramAdapter {
   subscribeViewport(callback: () => void): () => void;
   bindBackButton(callback: () => void): () => void;
   close?(): void;
+  hapticFeedback?(kind: "selection" | "success"): void;
 }
 
 class WebAppTelegramAdapter implements TelegramAdapter {
@@ -113,6 +114,16 @@ class WebAppTelegramAdapter implements TelegramAdapter {
 
   public close(): void {
     this.webApp.close?.();
+  }
+
+  public hapticFeedback(kind: "selection" | "success"): void {
+    if (!MOBILE_FULLSCREEN_PLATFORMS.has(this.platform.toLowerCase()) || !(this.webApp.isVersionAtLeast?.("6.1") ?? true)) return;
+    try {
+      if (kind === "selection") this.webApp.HapticFeedback?.selectionChanged();
+      else this.webApp.HapticFeedback?.notificationOccurred("success");
+    } catch {
+      // Partial Telegram implementations must not interrupt a completed action.
+    }
   }
 }
 

@@ -361,6 +361,11 @@ export function WeightPage() {
               <span><i className="is-average" />Среднее за 7 дней</span>
               {data.goal && <span><i className="is-target" />Цель</span>}
             </div>
+            <div className="weight-period-stats" aria-label="Итоги периода">
+              <div><span>Минимум</span><strong>{rangeDataReady && data.minimum_kg !== null ? `${formatWeight(data.minimum_kg)} кг` : "..."}</strong></div>
+              <div><span>Максимум</span><strong>{rangeDataReady && data.maximum_kg !== null ? `${formatWeight(data.maximum_kg)} кг` : "..."}</strong></div>
+              <div><span>Изменение</span><strong>{rangeDataReady && data.period_change_kg !== null ? `${signedWeight(data.period_change_kg)} кг` : "..."}</strong></div>
+            </div>
           </>
         ) : !rangeDataReady && weightQuery.isFetching ? (
           <div className="weight-chart-placeholder" role="status" aria-live="polite">

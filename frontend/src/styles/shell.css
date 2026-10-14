@@ -61,7 +61,7 @@
   justify-items: center;
   gap: 3px;
   color: var(--color-text-secondary);
-  font-size: 10px;
+  font-size: var(--type-caption);
   text-decoration: none;
 }
 .bottom-navigation__icon { width: 28px; height: 24px; display: grid; place-items: center; }

@@ -105,3 +105,17 @@ class RationSummaryResponse(BaseModel):
 
 class RationDayResponse(RationSummaryResponse):
     meals: list[RationMealResponse]
+
+
+class RationWeekDayResponse(BaseModel):
+    date: date
+    entry_count: int
+    energy_kcal: str
+
+
+class RationWeekResponse(BaseModel):
+    week_start: date
+    week_end: date
+    today: date
+    timezone: str
+    days: list[RationWeekDayResponse]

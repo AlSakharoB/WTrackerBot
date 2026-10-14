@@ -1,4 +1,5 @@
 import { Pencil } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   useEffect,
   useMemo,
@@ -9,8 +10,9 @@ import {
 } from "react";
 import {
   CartesianGrid,
+  Area,
+  ComposedChart,
   Line,
-  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -106,6 +108,7 @@ function ChartTooltip({ state, timezone }: { state: unknown; timezone: string })
 function yDomain(points: ChartDatum[], target: number | null): [number, number] {
   const values = points.flatMap((point) => point.average === null ? [point.weight] : [point.weight, point.average]);
   if (target !== null) values.push(target);
+  if (!values.length) return [0, 1];
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
   const padding = Math.max(0.5, (maximum - minimum) * 0.12);
@@ -148,6 +151,7 @@ export function WeightChart({
   onRangeCommit,
   onSelect,
 }: WeightChartProps) {
+  const reducedMotion = useReducedMotion();
   const data = useMemo<ChartDatum[]>(() => points
     .map((point) => ({
       ...point,
@@ -164,6 +168,7 @@ export function WeightChart({
   const plotRef = useRef<HTMLDivElement | null>(null);
   const pointersRef = useRef(new Map<number, ActivePointer>());
   const gestureRef = useRef<ActiveGesture | null>(null);
+  const pressedPointRef = useRef<ChartDatum | null>(null);
   const previewRef = useRef(range);
   const previewFrameRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
@@ -227,6 +232,10 @@ export function WeightChart({
   const finishGesture = (commit: boolean) => {
     const gesture = gestureRef.current;
     cancelPreviewFrame();
+    // Pointer capture retargets the click to the plot, so resolve a point tap here.
+    if (commit && gesture?.kind === "pending" && pressedPointRef.current) {
+      setSelectedPoint(pressedPointRef.current);
+    }
     if (commit && gesture && (gesture.kind === "horizontal" || gesture.kind === "pinch")) {
       suppressClickRef.current = true;
       setSelectedPoint(null);
@@ -244,16 +253,20 @@ export function WeightChart({
     }
     pointersRef.current.clear();
     gestureRef.current = null;
+    pressedPointRef.current = null;
     setGestureActive(false);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Node && selectedTooltipRef.current?.contains(event.target)) return;
     if (event.button !== 0 && event.pointerType === "mouse") return;
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const bounds = event.currentTarget.getBoundingClientRect();
 
     if (pointersRef.current.size === 1) {
+      const pointId = event.target instanceof Element ? event.target.closest<SVGGElement>("[data-weight-point]")?.dataset.weightPoint : undefined;
+      pressedPointRef.current = data.find((point) => point.id === pointId) ?? null;
       gestureRef.current = {
         kind: "pending",
         initialRange: range,
@@ -324,7 +337,8 @@ export function WeightChart({
     if (cx === undefined || cy === undefined || !payload) return <g />;
     return (
       <g
-        className="weight-chart-point"
+        className={`weight-chart-point ${selectedPoint?.id === payload.id ? "is-selected" : ""}`}
+        data-weight-point={payload.id}
         role="button"
         tabIndex={0}
         aria-label={`${formatDate(payload.measured_at, timezone, true)}: ${payload.weight_kg} кг`}
@@ -337,7 +351,8 @@ export function WeightChart({
         }}
       >
         <circle cx={cx} cy={cy} r={23} className="weight-chart-hit-area" />
-        <circle cx={cx} cy={cy} r={5} className="weight-chart-dot" />
+        {payload.id === data.at(-1)?.id && <circle cx={cx} cy={cy} r={10} className="weight-chart-halo" />}
+        <circle cx={cx} cy={cy} r={selectedPoint?.id === payload.id ? 6 : 4} className="weight-chart-dot" />
       </g>
     );
   };
@@ -356,10 +371,10 @@ export function WeightChart({
         onPointerUp={() => finishGesture(true)}
         onPointerCancel={() => finishGesture(false)}
       >
-        <div className="weight-chart__canvas">
+        <motion.div className="weight-chart__canvas" initial={false} animate={{ opacity: gestureActive ? 1 : isLoading ? 0.45 : 1 }} transition={{ duration: reducedMotion ? 0 : 0.18 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 16, right: 12, bottom: 8, left: 0 }}>
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 5" vertical={false} />
+            <ComposedChart data={data} margin={{ top: 22, right: 14, bottom: 8, left: 0 }}>
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="2 6" vertical={false} />
               <XAxis
                 dataKey="timestamp"
                 type="number"
@@ -383,17 +398,20 @@ export function WeightChart({
                 fontSize={11}
               />
               {!selectedPoint && <Tooltip content={(props) => <ChartTooltip state={props} timezone={timezone} />} cursor={{ stroke: "var(--color-text-secondary)", strokeDasharray: "3 4" }} />}
-              {target !== null && <ReferenceLine y={target} stroke="var(--color-energy)" strokeDasharray="6 5" label={{ value: "Цель", position: "insideTopRight", fill: "var(--color-text-secondary)", fontSize: 11 }} />}
-              <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--color-text-secondary)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--color-action-primary)" strokeWidth={3} dot={renderDot} activeDot={{ r: 7 }} isAnimationActive={false} />
-            </LineChart>
+              <Area type="monotone" dataKey="weight" baseValue={domain[0]} fill="var(--color-chart-area)" stroke="none" isAnimationActive={false} tooltipType="none" />
+              {target !== null && <ReferenceLine y={target} stroke="var(--color-energy)" strokeDasharray="6 5" label={{ value: `Цель ${target.toLocaleString("ru-RU")} кг`, position: "insideTopRight", fill: "var(--color-text-secondary)", fontSize: 11 }} />}
+              {selectedPoint && <ReferenceLine x={selectedPoint.timestamp} stroke="var(--color-chart-average)" strokeDasharray="3 4" />}
+              <Line type="monotone" dataKey="average" name="Среднее за 7 дней" stroke="var(--color-chart-average)" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="weight" name="Вес" stroke="var(--color-action-primary)" strokeWidth={2.5} dot={renderDot} activeDot={{ r: 6 }} isAnimationActive={false} />
+            </ComposedChart>
           </ResponsiveContainer>
-        </div>
+        </motion.div>
         {selectedPoint && (
           <div ref={selectedTooltipRef} className="weight-tooltip weight-tooltip--selected" role="status">
             <span>{formatDate(selectedPoint.measured_at, timezone, true)}</span>
             <strong>{selectedPoint.weight.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</strong>
             {selectedPoint.average !== null && <small>Среднее: {selectedPoint.average.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} кг</small>}
+            {selectedPoint.note && <small className="weight-tooltip__note">{selectedPoint.note}</small>}
             <button type="button" onClick={() => { const point = selectedPoint; setSelectedPoint(null); onSelect(point); }}><Pencil aria-hidden="true" /> Изменить</button>
           </div>
         )}

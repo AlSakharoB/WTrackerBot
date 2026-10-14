@@ -88,7 +88,7 @@ function FoodListSkeleton() {
 }
 
 export function FoodPage() {
-  const { initData, profile } = useMiniAppContext();
+  const { initData, profile, hapticFeedback } = useMiniAppContext();
   const authorized = Boolean(initData);
   const { showToast } = useToast();
   const location = useLocation();
@@ -309,7 +309,7 @@ export function FoodPage() {
               const checked = selected.has(item.id);
               const Icon = isDish(item) ? CookingPot : Salad;
               return (
-                <SwipeableRow key={item.id} label={item.name} open={swiped === item.id} disabled={selectionMode || deleting !== null || !authorized} onOpenChange={(open) => setSwiped(open ? item.id : null)} onLongPress={() => setEditing(item)} onDelete={() => setDeleting({ item, kind })}>
+                <SwipeableRow key={item.id} label={item.name} open={swiped === item.id} disabled={selectionMode || deleting !== null || !authorized} onOpenChange={(open) => setSwiped(open ? item.id : null)} onLongPress={() => { hapticFeedback?.("selection"); setEditing(item); }} onDelete={() => setDeleting({ item, kind })}>
                 <article className={`food-row ${checked ? "is-selected" : ""} ${selectionMode ? "is-selection-mode" : ""}`}>
                   {selectionMode && <button type="button" className="food-select" aria-label={`${checked ? "Снять выбор" : "Выбрать"} ${item.name}`} aria-pressed={checked} onClick={() => toggle(item.id)}>{checked ? <Check aria-hidden="true" /> : <span aria-hidden="true" />}</button>}
                   <button type="button" className="food-row__content" onClick={() => selectionMode ? toggle(item.id) : setEditing(item)}>

@@ -16,6 +16,13 @@ class DiarySourceUsage:
     last_used_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class DiaryDayActivity:
+    entry_date: date
+    entry_count: int
+    kcal: Decimal
+
+
 class DiaryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -96,6 +103,27 @@ class DiaryRepository:
             )
         )
         return int(await self._session.scalar(statement) or 0)
+
+    async def day_activity(
+        self, user_id: int, date_from: date, date_to: date
+    ) -> list[DiaryDayActivity]:
+        statement = (
+            select(
+                DiaryEntry.entry_date,
+                func.count(DiaryEntry.id),
+                func.sum(DiaryEntry.kcal_snapshot),
+            )
+            .where(
+                DiaryEntry.user_id == user_id,
+                DiaryEntry.entry_date.between(date_from, date_to),
+            )
+            .group_by(DiaryEntry.entry_date)
+            .order_by(DiaryEntry.entry_date)
+        )
+        return [
+            DiaryDayActivity(entry_date=day, entry_count=int(count), kcal=kcal)
+            for day, count, kcal in (await self._session.execute(statement)).all()
+        ]
 
     async def list_by_date_page(
         self,

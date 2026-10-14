@@ -2,10 +2,13 @@ import type { MealType, RationDay, RationNutrition } from "../../api/client";
 
 export function moveEntryInDay(day: RationDay, entryId: string, destination: MealType): RationDay {
   const entry = day.meals.flatMap((meal) => meal.entries).find((item) => item.id === entryId);
-  if (!entry || entry.meal_type === destination || !day.meals.some((meal) => meal.type === destination)) return day;
+  const meals = destination === "other" && !day.meals.some((meal) => meal.type === "other")
+    ? [...day.meals, { type: "other" as const, label: "Другое", entries: [], totals: { energy_kcal: "0", protein_g: "0", fat_g: "0", carbs_g: "0" } }]
+    : day.meals;
+  if (!entry || entry.meal_type === destination || !meals.some((meal) => meal.type === destination)) return day;
   return {
     ...day,
-    meals: day.meals.map((meal) => {
+    meals: meals.map((meal) => {
       if (meal.type !== entry.meal_type && meal.type !== destination) return meal;
       const entries = meal.type === destination
         ? [...meal.entries, { ...entry, meal_type: destination }]

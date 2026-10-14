@@ -9,6 +9,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 import { createFixtures, ingredients, longIngredients, mutationResponse, NOW, TODAY } from "./ui-baseline-fixtures.mjs";
 import { auditFoodGestures } from "./audit-food-gestures.mjs";
+import { auditVisualPolish } from "./audit-visual-polish.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const base = new URL(process.env.UI_AUDIT_URL ?? "http://127.0.0.1:5173");
@@ -66,12 +67,19 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
           const entry = meal.entries.find((item) => item.id === id);
           if (entry) { moved = { ...entry, ...(request.postDataJSON() ?? {}), updated_at: "2026-09-13T09:00:01Z" }; meal.entries = meal.entries.filter((item) => item.id !== id); }
         }
-        if (request.method() === "PATCH" && moved) day.meals.find((meal) => meal.type === moved.meal_type).entries.push(moved);
+        if (request.method() === "PATCH" && moved) {
+          if (!day.meals.some((meal) => meal.type === moved.meal_type)) day.meals.push({ type: "other", label: "Другое", entries: [], totals: {} });
+          day.meals.find((meal) => meal.type === moved.meal_type).entries.push(moved);
+        }
         const sum = (entries) => Object.fromEntries(Object.keys(day.totals).map((key) => [key, String(entries.reduce((total, entry) => total + Number(entry.nutrition[key]), 0))]));
         for (const meal of day.meals) meal.totals = sum(meal.entries);
         const entries = day.meals.flatMap((meal) => meal.entries);
         day.entry_count = entries.length;
         day.totals = sum(entries);
+        const energy = Number(day.totals.protein_g) * 4 + Number(day.totals.fat_g) * 9 + Number(day.totals.carbs_g) * 4;
+        const protein = energy ? Math.round(Number(day.totals.protein_g) * 4 / energy * 100) : 0;
+        const fat = energy ? Math.round(Number(day.totals.fat_g) * 9 / energy * 100) : 0;
+        day.macro_percentages = { protein, fat, carbs: energy ? 100 - protein - fat : 0 };
         return request.method() === "DELETE" ? route.fulfill({ status: 204 }) : respond(moved);
       }
       if (request.method() === "DELETE" && /^\/(ingredients|dishes)\/[^/]+$/.test(apiPath)) {
@@ -83,6 +91,18 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
       const result = mutationResponse(apiPath, state);
       if (result !== undefined) return respond(result);
     } else {
+      if (apiPath === "/ration/week") {
+        if (state === "week-error") return respond({ error: { message: "Не удалось загрузить неделю" } }, 503);
+        const start = new Date(`${url.searchParams.get("week_start")}T12:00:00Z`);
+        const days = Array.from({ length: 7 }, (_, offset) => {
+          const date = new Date(start);
+          date.setUTCDate(date.getUTCDate() + offset);
+          const iso = date.toISOString().slice(0, 10);
+          const populated = state !== "empty" && (iso === TODAY || offset % 2 === 0);
+          return { date: iso, entry_count: populated ? fixtures["/ration/day"].entry_count : 0, energy_kcal: populated ? fixtures["/ration/day"].totals.energy_kcal : "0" };
+        });
+        return respond({ week_start: days[0].date, week_end: days[6].date, today: TODAY, timezone: fixtures["/ration/day"].timezone, days });
+      }
       if (/^\/ration\/\d{4}-\d{2}-\d{2}$/.test(apiPath)) {
         const date = apiPath.split("/").at(-1);
         return respond({ ...fixtures["/ration/day"], date, is_today: date === TODAY, is_future: date > TODAY });
@@ -130,6 +150,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
   await page.addInitScript(({ theme, height, telegramColors, safeArea, state }) => {
     const noop = () => {};
     const chromeColors = window.__auditChromeColors = {};
+    const haptics = window.__auditHaptics = [];
     window.Telegram = { WebApp: {
       initData: "AUDIT_SYNTHETIC_NOT_VALID_AUTH", platform: "ios", colorScheme: telegramColors ? "light" : theme,
       viewportStableHeight: height,
@@ -140,6 +161,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
       setBackgroundColor: (color) => { chromeColors.background = color; },
       setBottomBarColor: (color) => { chromeColors.bottomBar = color; },
       BackButton: { onClick: noop, offClick: noop, show: noop, hide: noop },
+      HapticFeedback: { selectionChanged: () => haptics.push("selection"), notificationOccurred: (kind) => haptics.push(kind) },
     } };
     if (state === "offline") {
       Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
@@ -295,6 +317,7 @@ try {
     ? await chromium.connectOverCDP(process.env.UI_AUDIT_CDP_URL)
     : await chromium.launch({ executablePath: process.env.UI_AUDIT_EXECUTABLE || undefined });
   await auditFoodGestures(openPage, diagnostics);
+  await auditVisualPolish(openPage, diagnostics);
   const ration = await openPage("ration", { path: "/ration/add?date=2026-09-13&meal=breakfast" });
   await ration.page.locator(".ration-source-list button").first().waitFor();
   await ration.capture("ration-picker");
