@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type MouseEvent, type PointerEvent, type RefObject } from "react";
 
 import {
   hasOpenModalLayer,
@@ -39,6 +39,7 @@ export function useModalLayer({
 }: UseModalLayerOptions) {
   const idRef = useRef(Symbol("modal-layer"));
   const onCloseRef = useRef(onClose);
+  const backdropPressed = useRef(false);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -99,5 +100,24 @@ export function useModalLayer({
 
   return {
     isTopLayer: () => isTopModalLayer(idRef.current),
+    backdropHandlers: {
+      onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
+        backdropPressed.current = event.target === event.currentTarget;
+        if (backdropPressed.current) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      onClick: (event: MouseEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget) return;
+        event.preventDefault();
+        event.stopPropagation();
+        // Keep the backdrop mounted until the entire click has been consumed.
+        if ((backdropPressed.current || event.detail === 0) && isTopModalLayer(idRef.current)) {
+          onCloseRef.current();
+        }
+        backdropPressed.current = false;
+      },
+    },
   };
 }

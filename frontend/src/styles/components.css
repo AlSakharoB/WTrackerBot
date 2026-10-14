@@ -177,7 +177,7 @@
 .toast-region {
   position: fixed;
   z-index: 120;
-  bottom: calc(var(--bottom-nav-height) + 12px + max(var(--app-safe-bottom), var(--app-content-safe-bottom)));
+  top: calc(max(var(--app-header-safe-top-js), var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px)) + 8px);
   left: 50%;
   width: min(calc(100% - 24px), 480px);
   display: grid;
@@ -185,7 +185,11 @@
   transform: translateX(-50%);
   pointer-events: none;
 }
-.toast { min-height: 52px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 44px; align-items: center; gap: 9px; padding: 4px 4px 4px 13px; border: 1px solid var(--color-border); border-left: 4px solid var(--color-success); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-tooltip); pointer-events: auto; font-size: 13px; }
+.toast { min-height: 52px; display: grid; grid-template-columns: 22px minmax(0, 1fr) 44px; align-items: center; gap: 9px; padding: 4px 4px 4px 13px; border: 1px solid var(--color-border); border-left: 4px solid var(--color-success); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-tooltip); pointer-events: auto; font-size: 13px; animation: toast-enter 180ms ease-out both; }
+.toast > span { overflow-wrap: anywhere; }
+.toast.is-leaving { pointer-events: none; animation: toast-exit 180ms ease-in both; }
+@keyframes toast-enter { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-exit { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
 .toast > svg { color: var(--color-success); }
 .toast--error { border-left-color: var(--color-danger); }
 .toast--error > svg { color: var(--color-danger); }

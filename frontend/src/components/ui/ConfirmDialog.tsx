@@ -26,7 +26,7 @@ export function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const { isTopLayer } = useModalLayer({
+  const { backdropHandlers } = useModalLayer({
     open,
     containerRef: dialogRef,
     initialFocusRef: cancelRef,
@@ -38,9 +38,7 @@ export function ConfirmDialog({
     <div
       className="dialog-backdrop"
       role="presentation"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget && isTopLayer()) onClose();
-      }}
+      {...backdropHandlers}
     >
       <section
         ref={dialogRef}

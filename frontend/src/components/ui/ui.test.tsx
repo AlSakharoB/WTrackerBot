@@ -1,9 +1,16 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BottomSheet, ConfirmDialog, FormField, ProgressBar } from ".";
+import { BottomSheet, ConfirmDialog, FormField, ProgressBar, ToastProvider, useToast } from ".";
+
+function ToastTrigger() {
+  const { showToast } = useToast();
+  return <button type="button" onClick={() => showToast(`Notice ${Date.now()}`)}>Notify</button>;
+}
 
 describe("shared UI components", () => {
+  afterEach(() => vi.useRealTimers());
   it("clamps progress visually and for assistive technology", () => {
     render(<ProgressBar label="Белки" value={140} max={100} />);
     const progress = screen.getByRole("progressbar", { name: "Белки" });
@@ -87,5 +94,86 @@ describe("shared UI components", () => {
     cancel.focus();
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(confirm).toHaveFocus();
+  });
+
+  it.each(["sheet", "dialog"])("consumes the complete backdrop click before closing a %s", (kind) => {
+    const onBackgroundClick = vi.fn();
+    const onClose = vi.fn();
+    function Modal() {
+      const [open, setOpen] = useState(true);
+      const close = () => { onClose(); setOpen(false); };
+      return (
+        <div onClick={onBackgroundClick}>
+          <button type="button" onClick={onBackgroundClick}>Background action</button>
+          {kind === "sheet" ? (
+            <BottomSheet open={open} title="Menu" onClose={close}><button>Inside menu</button></BottomSheet>
+          ) : (
+            <ConfirmDialog open={open} title="Menu" description="Confirm" onClose={close} onConfirm={vi.fn()} />
+          )}
+        </div>
+      );
+    }
+    render(<Modal />);
+    const backdrop = document.querySelector(kind === "sheet" ? ".sheet-backdrop" : ".dialog-backdrop")!;
+
+    fireEvent.pointerDown(backdrop);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(backdrop).toBeInTheDocument();
+    fireEvent.pointerUp(backdrop);
+    fireEvent.click(backdrop, { detail: 1 });
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(backdrop).not.toBeInTheDocument();
+    expect(onBackgroundClick).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Background action" }));
+    expect(onBackgroundClick).toHaveBeenCalled();
+  });
+
+  it("does not close a sheet when a drag starts inside it and ends on the backdrop", () => {
+    const onClose = vi.fn();
+    render(<BottomSheet open title="Menu" onClose={onClose}><button>Inside menu</button></BottomSheet>);
+    const backdrop = document.querySelector(".sheet-backdrop")!;
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Inside menu" }));
+    fireEvent.pointerUp(backdrop);
+    fireEvent.click(backdrop, { detail: 1 });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows at most two toasts and replaces older notices after their exit", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    render(<ToastProvider><ToastTrigger /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    act(() => vi.advanceTimersByTime(10));
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    act(() => vi.advanceTimersByTime(10));
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    act(() => vi.advanceTimersByTime(10));
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+
+    expect(document.querySelectorAll(".toast")).toHaveLength(2);
+    expect(document.querySelectorAll(".toast.is-leaving")).toHaveLength(2);
+    act(() => vi.advanceTimersByTime(180));
+    expect(document.querySelectorAll(".toast")).toHaveLength(2);
+    expect(screen.queryByText("Notice 0")).not.toBeInTheDocument();
+    expect(screen.queryByText("Notice 10")).not.toBeInTheDocument();
+    expect(screen.getByText("Notice 20")).toBeInTheDocument();
+    expect(screen.getByText("Notice 30")).toBeInTheDocument();
+  });
+
+  it("animates toast dismissal after two seconds and cleans up timers", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<ToastProvider><ToastTrigger /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    act(() => vi.advanceTimersByTime(2000));
+    expect(document.querySelector(".toast")).toHaveClass("is-leaving");
+    act(() => vi.advanceTimersByTime(180));
+    expect(document.querySelector(".toast")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Notify" }));
+    fireEvent.click(screen.getByRole("button", { name: "Скрыть уведомление" }));
+    expect(document.querySelector(".toast")).toHaveClass("is-leaving");
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

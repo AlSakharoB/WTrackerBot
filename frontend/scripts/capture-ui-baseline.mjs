@@ -101,12 +101,16 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
   await page.clock.setFixedTime(new Date(NOW));
   await page.addInitScript(({ theme, height, telegramColors, safeArea, state }) => {
     const noop = () => {};
+    const chromeColors = window.__auditChromeColors = {};
     window.Telegram = { WebApp: {
       initData: "AUDIT_SYNTHETIC_NOT_VALID_AUTH", platform: "ios", colorScheme: telegramColors ? "light" : theme,
       viewportStableHeight: height,
       safeAreaInset: { top: safeArea ? 24 : 0, right: 0, bottom: safeArea ? 34 : 0, left: 0 },
       contentSafeAreaInset: { top: 0, right: 0, bottom: 0, left: 0 },
       ready: noop, expand: noop, requestFullscreen: noop, isVersionAtLeast: () => true, onEvent: noop, offEvent: noop,
+      setHeaderColor: (color) => { chromeColors.header = color; },
+      setBackgroundColor: (color) => { chromeColors.background = color; },
+      setBottomBarColor: (color) => { chromeColors.bottomBar = color; },
       BackButton: { onClick: noop, offClick: noop, show: noop, hide: noop },
     } };
     if (state === "offline") {
@@ -131,10 +135,18 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
   else await page.locator(ready[section]).first().waitFor();
   if (state !== "loading") await page.locator(".skeleton").waitFor({ state: "hidden" });
   await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction((expectedTheme) => (
+    document.documentElement.dataset.theme === expectedTheme
+    && document.documentElement.dataset.themeMode === expectedTheme
+  ), theme);
+  // React applies saved theme preferences after the first content render.
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
   if (viewport.width === 390 && state === "populated" && !path.startsWith("/food/share/")) {
     const axeResult = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     for (const violation of axeResult.violations) {
-      accessibilityViolations.push({ section, path, id: violation.id, impact: violation.impact, nodes: violation.nodes.map((node) => node.target) });
+      accessibilityViolations.push({ section, path, theme, viewport, id: violation.id, impact: violation.impact, nodes: violation.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })) });
     }
   }
   const capture = async (name, fullPage = false) => {
@@ -163,6 +175,8 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
         thirdFoodRow: bounds(document.querySelectorAll(".food-row")[2]),
         chart: bounds(document.querySelector(".weight-chart")),
         dialog: bounds(document.querySelector('[role="alertdialog"]') ?? document.querySelector('[role="dialog"]')),
+        toastRegion: bounds(document.querySelector(".toast-region")),
+        toastCount: document.querySelectorAll(".toast").length,
         smallControls: controls.filter((element) => { const rect = hitTarget(element).getBoundingClientRect(); return rect.width < 44 || rect.height < 44; }).map((element) => ({ label: element.getAttribute("aria-label") ?? element.textContent.trim().slice(0, 65), ...bounds(hitTarget(element)) })).slice(0, 30),
         smallInputs: controls.filter((element) => element.matches("input:not([type=checkbox]),select,textarea") && parseFloat(getComputedStyle(element).fontSize) < 16).map((element) => ({ id: element.id, fontSize: getComputedStyle(element).fontSize })),
         theme: document.documentElement.dataset.theme, background: getComputedStyle(document.body).backgroundColor,
@@ -219,6 +233,83 @@ try {
   await ration.page.keyboard.press("Tab");
   diagnostics.push({ check: "sheet-tab-focus", result: await ration.page.evaluate(() => ({ insideDialog: Boolean(document.activeElement?.closest('[role="dialog"]')), focusedElement: document.activeElement?.tagName })) });
   await ration.close();
+
+  const outsideMenu = await openPage("food");
+  const addBounds = await outsideMenu.page.getByRole("button", { name: "Добавить", exact: true }).boundingBox();
+  await outsideMenu.page.getByRole("button", { name: "Управлять папками" }).click();
+  const folderMenu = outsideMenu.page.getByRole("dialog", { name: "Папки еды" });
+  const menuBounds = await folderMenu.boundingBox();
+  assert(addBounds && menuBounds && addBounds.y + 4 < menuBounds.y, "Add button must be behind the backdrop in this scenario");
+  await outsideMenu.page.mouse.move(addBounds.x + addBounds.width / 2, addBounds.y + 4);
+  await outsideMenu.page.mouse.down();
+  assert.equal(await folderMenu.isVisible(), true, "Menu must stay mounted through pointerdown");
+  await outsideMenu.page.mouse.up();
+  await folderMenu.waitFor({ state: "hidden" });
+  assert.equal(new URL(outsideMenu.page.url()).pathname, "/food", "Outside click must not open the food editor underneath");
+  assert.equal(await outsideMenu.page.getByRole("dialog").count(), 0);
+  await outsideMenu.page.getByRole("button", { name: "Управлять папками" }).click();
+  await folderMenu.waitFor();
+  await outsideMenu.page.touchscreen.tap(addBounds.x + addBounds.width / 2, addBounds.y + 4);
+  await folderMenu.waitFor({ state: "hidden" });
+  assert.equal(new URL(outsideMenu.page.url()).pathname, "/food", "Outside touch must not open the food editor underneath");
+  assert.equal(await outsideMenu.page.getByRole("dialog").count(), 0);
+  diagnostics.push({ check: "backdrop-consumes-click-and-touch", result: { pathname: "/food", dialogs: 0 } });
+  await outsideMenu.capture("food-outside-menu-closed");
+  await outsideMenu.close();
+
+  for (const theme of ["light", "dark"]) {
+    const notifications = await openPage("profile", { theme });
+    const trigger = notifications.page.getByRole("button", { name: /Единицы веса/ });
+    for (let index = 0; index < 3; index++) {
+      await trigger.click();
+      assert(await notifications.page.locator(".toast").count() <= 2, "At most two notifications may be rendered");
+    }
+    await notifications.page.locator(".toast.is-leaving").waitFor({ state: "hidden" });
+    const result = await notifications.page.evaluate(() => {
+      const region = document.querySelector(".toast-region").getBoundingClientRect();
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = window.__auditChromeColors.background;
+      document.body.append(probe);
+      const nativeBackground = getComputedStyle(probe).backgroundColor;
+      probe.style.backgroundColor = "var(--color-surface)";
+      const surface = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return {
+        top: region.top, bottom: region.bottom, header: parseFloat(document.documentElement.style.getPropertyValue("--app-header-safe-top-js")),
+        nativeBackground, surface, body: getComputedStyle(document.body).backgroundColor,
+        html: getComputedStyle(document.documentElement).backgroundColor,
+        root: getComputedStyle(document.getElementById("root")).backgroundColor,
+        theme: document.documentElement.dataset.theme,
+        themeMode: document.documentElement.dataset.themeMode,
+        surfaceToken: getComputedStyle(document.documentElement).getPropertyValue("--color-surface"),
+        count: document.querySelectorAll(".toast").length,
+      };
+    });
+    assert.equal(result.count, 2);
+    assert(result.top >= result.header + 8 && result.bottom < 400, "Notifications must be at the top, below Telegram controls");
+    for (const color of [result.nativeBackground, result.body, result.html, result.root]) {
+      assert.equal(color, result.surface, `Keyboard corner backgrounds must match the menu surface: ${JSON.stringify(result)}`);
+    }
+    diagnostics.push({ check: `toast-placement-and-keyboard-background-${theme}`, result });
+    await notifications.capture("profile-top-notifications");
+    await notifications.page.emulateMedia({ reducedMotion: "no-preference" });
+    await notifications.page.getByRole("button", { name: "Скрыть уведомление" }).first().click();
+    const fadeOpacity = await notifications.page.evaluate(() => {
+      const toast = document.querySelector(".toast.is-leaving");
+      const animation = toast?.getAnimations().find((item) => item.animationName === "toast-exit");
+      if (!animation) return null;
+      animation.pause();
+      animation.currentTime = 90;
+      return Number(getComputedStyle(toast).opacity);
+    });
+    assert(fadeOpacity > 0 && fadeOpacity < 1, "Dismissal must fade through an intermediate opacity");
+    diagnostics.push({ check: `toast-exit-animation-${theme}`, result: { opacity: fadeOpacity } });
+    await notifications.page.locator(".toast.is-leaving").waitFor({ state: "hidden" });
+    assert.equal(await notifications.page.locator(".toast").count(), 1);
+    await notifications.page.waitForTimeout(2250);
+    assert.equal(await notifications.page.locator(".toast").count(), 0, "Notifications must expire after two seconds");
+    await notifications.close();
+  }
 
   const entry = await openPage("ration", { state: "deleted-source" });
   await entry.page.getByRole("button", { name: /^Открыть запись/ }).first().click();

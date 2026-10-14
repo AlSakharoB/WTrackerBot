@@ -15,7 +15,7 @@ interface BottomSheetProps {
 export function BottomSheet({ open, title, children, onClose }: BottomSheetProps) {
   const sheetRef = useRef<HTMLElement>(null);
   const titleId = useId();
-  const { isTopLayer } = useModalLayer({
+  const { backdropHandlers } = useModalLayer({
     open,
     containerRef: sheetRef,
     onClose,
@@ -26,9 +26,7 @@ export function BottomSheet({ open, title, children, onClose }: BottomSheetProps
     <div
       className="sheet-backdrop"
       role="presentation"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget && isTopLayer()) onClose();
-      }}
+      {...backdropHandlers}
     >
       <section
         ref={sheetRef}
