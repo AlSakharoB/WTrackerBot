@@ -178,6 +178,7 @@
   box-shadow: var(--shadow-sheet);
 }
 .bottom-sheet__handle { width: 38px; height: 4px; flex: 0 0 4px; margin: 2px auto 6px; border-radius: 2px; background: var(--color-border); }
+.sheet-backdrop[data-state="closing"], .dialog-backdrop[data-state="closing"] { cursor: default; }
 .bottom-sheet header { min-height: 52px; flex: 0 0 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .bottom-sheet h2 { margin: 0; overflow-wrap: anywhere; font-size: 19px; }
 .bottom-sheet__content { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 8px 2px max(20px, max(var(--app-safe-bottom), var(--app-content-safe-bottom))); scroll-padding-bottom: 72px; }
@@ -202,6 +203,15 @@
   border-radius: var(--radius-control);
   background: var(--color-surface);
 }
+
+.swipe-row { position: relative; min-width: 0; overflow: hidden; }
+.swipe-row__content { position: relative; min-width: 0; background: var(--color-surface); touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.swipe-row__delete { position: absolute; inset: 0 0 0 auto; width: 72px; height: 100%; display: grid; place-items: center; padding: 0; border: 0; color: #ffffff; background: #bd3e4c; cursor: pointer; }
+.swipe-row__delete:disabled { opacity: 1; cursor: default; }
+.swipe-row__delete svg { width: 21px; height: 21px; }
+.swipe-row__delete:focus-visible { outline-offset: -4px; }
+.swipe-row__content :is(button, a):focus-visible { outline-offset: -3px; }
+.swipe-row.is-swiping .swipe-row__content { will-change: transform; }
 
 .toast-region {
   position: fixed;

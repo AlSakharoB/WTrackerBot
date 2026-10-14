@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { LockKeyhole, RefreshCw, RouteOff } from "lucide-react";
 
@@ -18,10 +19,8 @@ import {
 } from "../api/client";
 import { AppShell } from "../components/layout/AppShell";
 import { ProductState, Skeleton, ToastProvider } from "../components/ui";
-import { FoodPage } from "../pages/FoodPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { PrivacyPolicyPage } from "../pages/PrivacyPolicyPage";
-import { RationPage } from "../pages/RationPage";
 import { SharePreviewPage } from "../pages/SharePreviewPage";
 import type { TelegramAdapter } from "../telegram/adapter";
 import { useTelegramEnvironment } from "../telegram/hooks";
@@ -30,6 +29,20 @@ import type { MiniAppContext } from "./context";
 const WeightPage = lazy(() =>
   import("../pages/WeightPage").then((module) => ({ default: module.WeightPage })),
 );
+const RationPage = lazy(() =>
+  import("../pages/RationPage").then((module) => ({ default: module.RationPage })),
+);
+const FoodPage = lazy(() =>
+  import("../pages/FoodPage").then((module) => ({ default: module.FoodPage })),
+);
+
+function RationRoute() {
+  return <Suspense fallback={<div className="page"><Skeleton lines={7} /></div>}><RationPage /></Suspense>;
+}
+
+function FoodRoute() {
+  return <Suspense fallback={<div className="page"><Skeleton lines={7} /></div>}><FoodPage /></Suspense>;
+}
 
 const DEFAULT_PREFERENCES: UIPreferences = {
   theme_mode: "system",
@@ -190,16 +203,17 @@ export function App({ telegram }: AppProps) {
 
   return (
     <ToastProvider>
-      <Routes>
+      <AnimatePresence mode="wait" initial={false}>
+      <Routes location={location} key={location.pathname.split("/")[1]}>
         <Route
           path="/"
           element={<InitialRedirect defaultSection={preferences.default_section} />}
         />
         <Route element={<AppShell telegram={telegram} context={context} />}>
-          <Route path="/ration" element={<RationPage />} />
-          <Route path="/ration/add" element={<RationPage />} />
-          <Route path="/food" element={<FoodPage />} />
-          <Route path="/food/new" element={<FoodPage />} />
+          <Route path="/ration" element={<RationRoute />} />
+          <Route path="/ration/add" element={<RationRoute />} />
+          <Route path="/food" element={<FoodRoute />} />
+          <Route path="/food/new" element={<FoodRoute />} />
           <Route path="/food/share/:token" element={<SharePreviewPage />} />
           <Route
             path="/weight"
@@ -222,6 +236,7 @@ export function App({ telegram }: AppProps) {
           />
         </Route>
       </Routes>
+      </AnimatePresence>
     </ToastProvider>
   );
 }

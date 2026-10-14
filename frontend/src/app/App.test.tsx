@@ -131,10 +131,10 @@ describe("Mini App routes", () => {
     expect(await screen.findByText("Ингредиент добавлен")).toBeInTheDocument();
   });
 
-  it("moves through bottom navigation and stores the selected section", () => {
+  it("moves through bottom navigation and stores the selected section", async () => {
     renderApp("/ration");
     fireEvent.click(screen.getByRole("link", { name: "Еда" }));
-    expect(screen.getByPlaceholderText("Найти ингредиент")).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("Найти ингредиент")).toBeInTheDocument();
     expect(localStorage.getItem("miniapp:last-section")).toBe("food");
   });
 

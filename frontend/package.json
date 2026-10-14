@@ -15,9 +15,11 @@
     "design:capture-final": "node scripts/capture-final-blueprints.mjs"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
     "@tanstack/react-query": ">=5.0.0 <6.0.0",
     "@zxing/browser": "^0.1.5",
     "lucide-react": ">=0.468.0 <1.0.0",
+    "motion": "^14.2.0",
     "react": ">=19.0.0 <20.0.0",
     "react-dom": ">=19.0.0 <20.0.0",
     "react-router-dom": ">=7.0.0 <8.0.0",

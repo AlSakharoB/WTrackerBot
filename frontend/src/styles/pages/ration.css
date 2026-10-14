@@ -111,6 +111,15 @@
 .meal-entry__energy { font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meal-entry__energy small { color: var(--color-text-secondary); font-size: 8px; font-weight: 500; }
 .meal-entry > .icon-button { border: 0; }
+.meal-entry-source:not(:last-child) { border-bottom: 1px solid var(--color-border); }
+.meal-entry-source.is-dragging { opacity: .35; }
+.meal-section.is-drop-zone { transition: border-color 160ms ease, box-shadow 160ms ease; }
+.meal-section.is-drop-target { border-color: var(--color-action-primary); box-shadow: inset 0 0 0 1px var(--color-action-primary); }
+.meal-section.is-drop-target > header { background: var(--color-action-soft); }
+.meal-entry-drag-preview { overflow: hidden; border: 1px solid var(--color-action-primary); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); box-shadow: var(--shadow-sheet); cursor: grabbing; }
+.meal-entry-drag-preview .meal-entry__main { padding-right: 12px; }
+.meals-list.is-drag-active { cursor: grabbing; }
+.meals-list.is-drag-active :is(button, a) { cursor: grabbing; }
 
 .ration-page-skeleton { min-height: 204px; display: grid; grid-template-columns: 108px minmax(0, 1fr); grid-template-rows: 45px 108px 34px; gap: 7px 13px; }
 .ration-page-skeleton i, .ration-meals-skeleton i { display: block; border-radius: var(--radius-small); background: linear-gradient(100deg, var(--color-border) 25%, var(--color-surface-muted) 45%, var(--color-border) 65%); background-size: 220% 100%; animation: skeleton-loading 1.2s ease-in-out infinite; }

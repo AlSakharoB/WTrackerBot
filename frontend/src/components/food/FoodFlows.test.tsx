@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "../../api/client";
 import { ToastProvider } from "../ui";
 import { BarcodeScannerSheet } from "./BarcodeScannerSheet";
 import { FoodEditorSheet } from "./FoodEditorSheet";
+import { FoodDeleteDialog } from "./FoodDeleteDialog";
 
 const scannerMock = vi.hoisted(() => ({ decodeFromConstraints: vi.fn() }));
 
@@ -141,6 +142,56 @@ describe("food editor flows", () => {
     await waitFor(() => expect(api.deleteFood).toHaveBeenCalledWith("test-init-data", "ingredients", firstIngredient.id));
     expect(screen.queryByRole("alertdialog", { name: "Удалить безвозвратно?" })).not.toBeInTheDocument();
     expect(props.onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("catalog swipe deletion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.fetchDeleteConsequence).mockResolvedValue({ can_delete: true, message: "Можно удалить", dependencies: [] });
+    vi.mocked(api.deleteFood).mockResolvedValue(undefined);
+  });
+
+  it("checks dependencies and requires confirmation before deleting", async () => {
+    const onClose = vi.fn();
+    renderFlow(<FoodDeleteDialog item={firstIngredient} kind="ingredients" initData="signed" confirmDeletions onClose={onClose} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Удалить" })).toBeEnabled());
+    expect(api.deleteFood).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    fireEvent.click(screen.getByRole("button", { name: /Удалить|Удаляем/ }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(api.deleteFood).toHaveBeenCalledExactlyOnceWith("signed", "ingredients", firstIngredient.id);
+  });
+
+  it("cannot bypass a dish dependency when confirmations are disabled", async () => {
+    vi.mocked(api.fetchDeleteConsequence).mockResolvedValue({ can_delete: false, message: "Используется в блюде", dependencies: ["Завтрак"] });
+    const onClose = vi.fn();
+    renderFlow(<FoodDeleteDialog item={firstIngredient} kind="ingredients" initData="signed" confirmDeletions={false} onClose={onClose} />);
+    expect(await screen.findByRole("alertdialog", { name: "Удаление недоступно" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Понятно" }));
+    expect(api.deleteFood).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("automatically deletes once in StrictMode when confirmation is disabled", async () => {
+    const onClose = vi.fn();
+    renderFlow(<StrictMode><FoodDeleteDialog item={firstIngredient} kind="ingredients" initData="signed" confirmDeletions={false} onClose={onClose} /></StrictMode>);
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(api.deleteFood).toHaveBeenCalledExactlyOnceWith("signed", "ingredients", firstIngredient.id);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("retains the dialog and allows retrying when deletion fails", async () => {
+    vi.mocked(api.deleteFood).mockRejectedValueOnce(new api.APIError("Нет связи", 503));
+    const onClose = vi.fn();
+    renderFlow(<FoodDeleteDialog item={firstIngredient} kind="ingredients" initData="signed" confirmDeletions onClose={onClose} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Удалить" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    expect(await screen.findByText("Нет связи")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(api.deleteFood).toHaveBeenCalledTimes(2);
   });
 });
 

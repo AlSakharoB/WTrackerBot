@@ -1,9 +1,10 @@
 import { X } from "lucide-react";
-import { useId, useRef, type ReactNode } from "react";
+import { AnimatePresence } from "motion/react";
+import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { IconButton } from "./IconButton";
-import { useModalLayer } from "./useModalLayer";
+import { ModalSurface } from "./ModalSurface";
 
 interface BottomSheetProps {
   open: boolean;
@@ -13,37 +14,18 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ open, title, children, onClose }: BottomSheetProps) {
-  const sheetRef = useRef<HTMLElement>(null);
   const titleId = useId();
-  const { backdropHandlers } = useModalLayer({
-    open,
-    containerRef: sheetRef,
-    onClose,
-  });
-
-  if (!open) return null;
   return createPortal(
-    <div
-      className="sheet-backdrop"
-      role="presentation"
-      {...backdropHandlers}
-    >
-      <section
-        ref={sheetRef}
-        className="bottom-sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-      >
+    <AnimatePresence propagate={open}>
+      {open && <ModalSurface key="sheet" kind="sheet" titleId={titleId} onClose={onClose}>
         <div className="bottom-sheet__handle" aria-hidden="true" />
         <header>
           <h2 id={titleId}>{title}</h2>
           <IconButton label="Закрыть" icon={X} onClick={onClose} />
         </header>
         <div className="bottom-sheet__content">{children}</div>
-      </section>
-    </div>,
+      </ModalSurface>}
+    </AnimatePresence>,
     document.body,
   );
 }

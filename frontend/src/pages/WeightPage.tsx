@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence } from "motion/react";
 import {
   CalendarRange,
   ChevronLeft,
@@ -403,9 +404,15 @@ export function WeightPage() {
         ) : weightQuery.isFetching ? <Skeleton lines={3} /> : <p className="inline-empty">Измерений в выбранном периоде нет</p>}
       </section>
 
-      <WeightEntrySheet key={`add-${addOpen}`} open={addOpen} entry={null} timezone={data.timezone} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setAddOpen(false)} onChanged={refresh} />
-      <WeightEntrySheet key={selectedEntry?.id ?? "none"} open={selectedEntry !== null} entry={selectedEntry} timezone={data.timezone} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setSelectedEntry(null)} onChanged={refresh} />
-      <WeightGoalSheet key={`${goalOpen}-${data.goal?.id ?? "none"}`} open={goalOpen} goal={data.goal} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setGoalOpen(false)} onChanged={refresh} />
+      <AnimatePresence mode="wait" propagate={addOpen}>
+        {addOpen && <WeightEntrySheet key="add" open entry={null} timezone={data.timezone} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setAddOpen(false)} onChanged={refresh} />}
+      </AnimatePresence>
+      <AnimatePresence mode="wait" propagate={selectedEntry !== null}>
+        {selectedEntry && <WeightEntrySheet key={selectedEntry.id} open entry={selectedEntry} timezone={data.timezone} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setSelectedEntry(null)} onChanged={refresh} />}
+      </AnimatePresence>
+      <AnimatePresence mode="wait" propagate={goalOpen}>
+        {goalOpen && <WeightGoalSheet key={data.goal?.id ?? "new"} open goal={data.goal} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={() => setGoalOpen(false)} onChanged={refresh} />}
+      </AnimatePresence>
     </div>
   );
 }

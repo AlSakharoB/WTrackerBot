@@ -82,6 +82,7 @@
 .food-catalog__heading p { margin: 2px 0 0; color: var(--color-text-secondary); font-size: 10px; }
 .food-catalog__heading .button-secondary { min-height: 44px; }
 .food-list { display: grid; }
+.food-list > .swipe-row > .swipe-row__content { background: var(--color-background); }
 .food-row {
   min-width: 0;
   min-height: 68px;

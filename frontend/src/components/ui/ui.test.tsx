@@ -68,6 +68,8 @@ describe("shared UI components", () => {
         <button type="button">Сохранить</button>
       </BottomSheet>,
     );
+    expect(document.body).toHaveAttribute("data-overlay-open");
+    expect(document.getElementById("root")).toHaveProperty("inert", true);
     await waitFor(() => expect(document.body).not.toHaveAttribute("data-overlay-open"));
     expect(document.getElementById("root")).toHaveProperty("inert", false);
     expect(trigger).toHaveFocus();
@@ -96,7 +98,7 @@ describe("shared UI components", () => {
     expect(confirm).toHaveFocus();
   });
 
-  it.each(["sheet", "dialog"])("consumes the complete backdrop click before closing a %s", (kind) => {
+  it.each(["sheet", "dialog"])("consumes the complete backdrop click before closing a %s", async (kind) => {
     const onBackgroundClick = vi.fn();
     const onClose = vi.fn();
     function Modal() {
@@ -123,8 +125,9 @@ describe("shared UI components", () => {
     fireEvent.click(backdrop, { detail: 1 });
 
     expect(onClose).toHaveBeenCalledOnce();
-    expect(backdrop).not.toBeInTheDocument();
+    expect(backdrop).toHaveAttribute("data-state", "closing");
     expect(onBackgroundClick).not.toHaveBeenCalled();
+    await waitFor(() => expect(backdrop).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Background action" }));
     expect(onBackgroundClick).toHaveBeenCalled();
   });

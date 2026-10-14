@@ -8,6 +8,7 @@ import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 
 import { createFixtures, ingredients, longIngredients, mutationResponse, NOW, TODAY } from "./ui-baseline-fixtures.mjs";
+import { auditFoodGestures } from "./audit-food-gestures.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const base = new URL(process.env.UI_AUDIT_URL ?? "http://127.0.0.1:5173");
@@ -25,13 +26,15 @@ await mkdir(output, { recursive: true });
 await writeFile(resolve(output, "run-status.json"), '{"status":"running"}\n');
 let browser;
 
-async function openPage(section, { theme = "light", state = "populated", viewport = viewports[1], path = `/${section}`, telegramColors = false, safeArea = false } = {}) {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: theme, locale: "ru-RU", timezoneId: "Europe/Moscow", reducedMotion: "reduce", serviceWorkers: "block", hasTouch: viewport.width < 768 });
+async function openPage(section, { theme = "light", state = "populated", viewport = viewports[1], path = `/${section}`, telegramColors = false, safeArea = false, reducedMotion = "reduce", fixedTime = true } = {}) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: theme, locale: "ru-RU", timezoneId: "Europe/Moscow", reducedMotion, serviceWorkers: "block", hasTouch: viewport.width < 768 });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on("pageerror", (error) => errors.push(`${section}/${state}: ${error.message}`));
   const fixtures = createFixtures(theme, state);
+  if (state === "gestures-no-confirm") fixtures["/profile"].confirm_deletions = false;
   const requests = [];
+  const mutations = [];
   const pendingRoutes = [];
   await context.route("**/*", async (route) => {
     const request = route.request();
@@ -48,11 +51,34 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
     if (primary && state === "loading") { pendingRoutes.push(route); return; }
     if (primary && state === "error") return respond({ error: { message: "Сервис временно недоступен (тестовый ответ)", correlation_id: "audit-error" } }, 503);
     if (request.method() !== "GET") {
+      mutations.push({ method: request.method(), path: apiPath, body: request.postDataJSON() });
       if (apiPath === "/ingredients" && state === "duplicate") return respond({ error: { message: "Такой продукт уже существует", details: { existing: ingredients[0] } } }, 409);
       if (apiPath === "/barcodes/lookup" && state === "barcode-unavailable") return respond({ error: { message: "Open Food Facts временно недоступен. Попробуйте позже.", correlation_id: "audit-offline" } }, 503);
       if (/^\/barcodes\/[^/]+\/create-ingredient$/.test(apiPath) && state === "barcode-duplicate") return respond({ error: { message: "Этот продукт уже добавлен", details: { existing: ingredients[0] } } }, 409);
-      if (state === "ration-conflict" && request.method() === "PATCH" && /^\/ration\/entries\//.test(apiPath)) {
+      if (["ration-conflict", "ration-move-conflict"].includes(state) && request.method() === "PATCH" && /^\/ration\/entries\//.test(apiPath)) {
         return respond({ error: { message: "Запись была изменена в другом сеансе", correlation_id: "audit-conflict" } }, 409);
+      }
+      if (/^\/ration\/entries\/[^/]+$/.test(apiPath)) {
+        const id = apiPath.split("/").at(-1);
+        const day = fixtures["/ration/day"];
+        let moved;
+        for (const meal of day.meals) {
+          const entry = meal.entries.find((item) => item.id === id);
+          if (entry) { moved = { ...entry, ...(request.postDataJSON() ?? {}), updated_at: "2026-09-13T09:00:01Z" }; meal.entries = meal.entries.filter((item) => item.id !== id); }
+        }
+        if (request.method() === "PATCH" && moved) day.meals.find((meal) => meal.type === moved.meal_type).entries.push(moved);
+        const sum = (entries) => Object.fromEntries(Object.keys(day.totals).map((key) => [key, String(entries.reduce((total, entry) => total + Number(entry.nutrition[key]), 0))]));
+        for (const meal of day.meals) meal.totals = sum(meal.entries);
+        const entries = day.meals.flatMap((meal) => meal.entries);
+        day.entry_count = entries.length;
+        day.totals = sum(entries);
+        return request.method() === "DELETE" ? route.fulfill({ status: 204 }) : respond(moved);
+      }
+      if (request.method() === "DELETE" && /^\/(ingredients|dishes)\/[^/]+$/.test(apiPath)) {
+        if (state === "gesture-delete-error") return respond({ error: { message: "Удаление временно недоступно" } }, 503);
+        const [, kind, id] = apiPath.split("/");
+        fixtures[`/${kind}`].items = fixtures[`/${kind}`].items.filter((item) => item.id !== id);
+        return route.fulfill({ status: 204 });
       }
       const result = mutationResponse(apiPath, state);
       if (result !== undefined) return respond(result);
@@ -80,7 +106,9 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
           history: [...visiblePoints].reverse(),
         });
       }
-      if (apiPath.endsWith("/delete-consequences")) return respond({ can_delete: false, message: "Ингредиент используется в блюде. Сначала измените состав блюда.", dependencies: ["Овсянка с йогуртом и бананом"] });
+      if (apiPath.endsWith("/delete-consequences")) return respond(state.startsWith("gesture")
+        ? { can_delete: true, message: "Записи рациона сохранят свои значения.", dependencies: [] }
+        : { can_delete: false, message: "Ингредиент используется в блюде. Сначала измените состав блюда.", dependencies: ["Овсянка с йогуртом и бананом"] });
       if (apiPath === "/ingredients" && state === "long-food") {
         const search = url.searchParams.get("query")?.toLocaleLowerCase("ru-RU") ?? "";
         const filtered = longIngredients.filter((item) => item.name.toLocaleLowerCase("ru-RU").includes(search));
@@ -98,7 +126,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
     errors.push(`Unmocked API: ${request.method()} ${apiPath}`);
     return respond({ error: { message: "Unmocked audit API" } }, 501);
   });
-  await page.clock.setFixedTime(new Date(NOW));
+  if (fixedTime) await page.clock.setFixedTime(new Date(NOW));
   await page.addInitScript(({ theme, height, telegramColors, safeArea, state }) => {
     const noop = () => {};
     const chromeColors = window.__auditChromeColors = {};
@@ -149,8 +177,8 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
       accessibilityViolations.push({ section, path, theme, viewport, id: violation.id, impact: violation.impact, nodes: violation.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })) });
     }
   }
-  const capture = async (name, fullPage = false) => {
-    await page.mouse.move(0, 0);
+  const capture = async (name, fullPage = false, { keepPointer = false } = {}) => {
+    if (!keepPointer) await page.mouse.move(0, 0);
     const filename = `${name}-${viewport.width}x${viewport.height}-${theme}${fullPage ? "-full" : ""}.png`;
     const metrics = await page.evaluate(() => {
       const bounds = (element) => {
@@ -208,7 +236,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
     for (const route of pendingRoutes) await route.abort();
     await context.close();
   };
-  return { page, context, capture, close, requests };
+  return { page, context, capture, close, requests, mutations };
 }
 
 async function checkFieldFocus(session, name, control) {
@@ -266,6 +294,7 @@ try {
   browser = process.env.UI_AUDIT_CDP_URL
     ? await chromium.connectOverCDP(process.env.UI_AUDIT_CDP_URL)
     : await chromium.launch({ executablePath: process.env.UI_AUDIT_EXECUTABLE || undefined });
+  await auditFoodGestures(openPage, diagnostics);
   const ration = await openPage("ration", { path: "/ration/add?date=2026-09-13&meal=breakfast" });
   await ration.page.locator(".ration-source-list button").first().waitFor();
   await ration.capture("ration-picker");

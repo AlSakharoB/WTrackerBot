@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useDeferredValue, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -36,12 +37,14 @@ import {
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
 import { FoodEditorSheet } from "../components/food/FoodEditorSheet";
+import { FoodDeleteDialog } from "../components/food/FoodDeleteDialog";
 import { BarcodeScannerSheet } from "../components/food/BarcodeScannerSheet";
 import { FolderManagerSheet } from "../components/food/FolderManagerSheet";
 import {
   BottomSheet,
   ErrorState,
   SegmentedControl,
+  SwipeableRow,
   useToast,
 } from "../components/ui";
 
@@ -99,6 +102,8 @@ export function FoodPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [editing, setEditing] = useState<FoodItem | null>(null);
+  const [swiped, setSwiped] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ item: FoodItem; kind: FoodKind } | null>(null);
   const [share, setShare] = useState<SharingPackage | null>(null);
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
@@ -174,6 +179,7 @@ export function FoodPage() {
   });
 
   const changeKind = (value: FoodKind) => {
+    setSwiped(null);
     setKind(value);
     setSelected(new Set());
     setSelectionMode(false);
@@ -232,6 +238,7 @@ export function FoodPage() {
     }
   };
   const clearSelection = () => {
+    setSwiped(null);
     setSelected(new Set());
     setSelectionMode(false);
     shareMutationKey.current = mutationKey();
@@ -302,14 +309,16 @@ export function FoodPage() {
               const checked = selected.has(item.id);
               const Icon = isDish(item) ? CookingPot : Salad;
               return (
-                <article className={`food-row ${checked ? "is-selected" : ""} ${selectionMode ? "is-selection-mode" : ""}`} key={item.id}>
+                <SwipeableRow key={item.id} label={item.name} open={swiped === item.id} disabled={selectionMode || deleting !== null || !authorized} onOpenChange={(open) => setSwiped(open ? item.id : null)} onLongPress={() => setEditing(item)} onDelete={() => setDeleting({ item, kind })}>
+                <article className={`food-row ${checked ? "is-selected" : ""} ${selectionMode ? "is-selection-mode" : ""}`}>
                   {selectionMode && <button type="button" className="food-select" aria-label={`${checked ? "Снять выбор" : "Выбрать"} ${item.name}`} aria-pressed={checked} onClick={() => toggle(item.id)}>{checked ? <Check aria-hidden="true" /> : <span aria-hidden="true" />}</button>}
                   <button type="button" className="food-row__content" onClick={() => selectionMode ? toggle(item.id) : setEditing(item)}>
                     <span className="food-row__type"><Icon aria-hidden="true" /></span>
                     <span className="food-row__copy"><strong>{item.name}</strong><NutritionLine item={item} /><small>{folderName(item)}{isDish(item) && ` · ${item.components.length} комп.`}</small></span>
                   </button>
-                  <button type="button" className="food-folder-action" aria-label={`Переместить ${item.name} в папку`} title="Переместить в папку" onClick={() => setMovingItem(item)}><FolderInput aria-hidden="true" /></button>
+                  <button type="button" data-row-action className="food-folder-action" aria-label={`Переместить ${item.name} в папку`} title="Переместить в папку" onClick={() => setMovingItem(item)}><FolderInput aria-hidden="true" /></button>
                 </article>
+                </SwipeableRow>
               );
             })}
             {foods.hasNextPage && <button type="button" className="load-more button-secondary button-with-icon" disabled={foods.isFetchingNextPage} onClick={() => void foods.fetchNextPage()}><RefreshCw aria-hidden="true" size={17} />{foods.isFetchingNextPage ? "Загружаем..." : "Показать еще"}</button>}
@@ -324,7 +333,12 @@ export function FoodPage() {
         )}
       </section>
 
-      {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : editorParams.get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={closeEditor} onOpenExisting={openExisting} onSaved={finishEditor} />}
+      <AnimatePresence mode="wait" propagate={editorOpen}>
+        {editorOpen && <FoodEditorSheet key={`${editing?.id ?? "new"}-${kind}`} open kind={editing ? (isDish(editing) ? "dishes" : "ingredients") : editorParams.get("kind") === "dishes" ? "dishes" : kind} item={editing} folders={folders} initData={initData} authorized={authorized} confirmDeletions={profile.confirm_deletions} onClose={closeEditor} onOpenExisting={openExisting} onSaved={finishEditor} />}
+      </AnimatePresence>
+      <AnimatePresence propagate={deleting !== null}>
+        {deleting && <FoodDeleteDialog key={`${deleting.kind}-${deleting.item.id}`} {...deleting} initData={initData} confirmDeletions={profile.confirm_deletions} onClose={() => setDeleting(null)} />}
+      </AnimatePresence>
 
       <BarcodeScannerSheet open={barcodeScannerOpen} initData={initData} folders={folders} onClose={() => setBarcodeScannerOpen(false)} onOpenExisting={openExisting} />
 

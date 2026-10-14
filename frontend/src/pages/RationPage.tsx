@@ -1,37 +1,36 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Apple,
-  CookingPot,
-  EllipsisVertical,
   Flame,
   Goal,
-  MoonStar,
   Plus,
-  Salad,
-  Sun,
-  Sunrise,
-  Utensils,
 } from "lucide-react";
-import { useState, type CSSProperties, type ElementType } from "react";
+import { AnimatePresence } from "motion/react";
+import { useRef, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
+  APIError,
+  deleteRationEntry,
   fetchRationDay,
+  updateRationEntry,
   type MealType,
   type NumberFormat,
   type RationDay,
   type RationEntry,
-  type RationMeal,
   type RationNutrition,
   type RationSource,
 } from "../api/client";
 import { useMiniAppContext } from "../app/context";
 import { RationAddSheet } from "../components/ration/RationAddSheet";
 import { RationEntrySheet } from "../components/ration/RationEntrySheet";
+import { RationMeals } from "../components/ration/RationMeals";
+import { moveEntryInDay } from "../components/ration/move-entry";
 import {
+  ConfirmDialog,
   DateSwitcher,
   ErrorState,
   ProgressBar,
+  useToast,
 } from "../components/ui";
 
 const ZERO_NUTRITION: RationNutrition = {
@@ -46,13 +45,6 @@ const MEALS: Array<{ type: MealType; label: string }> = [
   { type: "dinner", label: "Ужин" },
   { type: "snack", label: "Перекус" },
 ];
-const MEAL_ICONS: Record<MealType, ElementType> = {
-  breakfast: Sunrise,
-  lunch: Sun,
-  dinner: MoonStar,
-  snack: Apple,
-  other: Utensils,
-};
 
 function todayInTimezone(timezone: string): string {
   try {
@@ -203,55 +195,6 @@ function DayBalance({ day }: { day: RationDay }) {
   );
 }
 
-function MealSection({
-  meal,
-  date,
-  format,
-  onSelectEntry,
-}: {
-  meal: RationMeal;
-  date: string;
-  format: NumberFormat;
-  onSelectEntry: (entry: RationEntry) => void;
-}) {
-  const Icon = MEAL_ICONS[meal.type];
-  const addTarget = `/ration/add?date=${date}&meal=${meal.type}`;
-  return (
-    <article className="meal-section">
-      <header>
-        <span className={`meal-icon meal-icon--${meal.type}`}><Icon aria-hidden="true" /></span>
-        <div>
-          <h3>{meal.label}</h3>
-          <p>{formatValue(meal.totals.energy_kcal, format)} ккал · Б {formatValue(meal.totals.protein_g, format)} · Ж {formatValue(meal.totals.fat_g, format)} · У {formatValue(meal.totals.carbs_g, format)}</p>
-        </div>
-        <Link className="icon-link" to={addTarget} aria-label={`Добавить в ${meal.label.toLowerCase()}`} title="Добавить запись"><Plus aria-hidden="true" /></Link>
-      </header>
-      {meal.entries.length === 0 ? (
-        <Link className="meal-empty" to={addTarget}>
-          <span>Пока ничего не добавлено</span>
-          <strong>Добавить еду</strong>
-        </Link>
-      ) : (
-        <div className="meal-entries">
-          {meal.entries.map((entry) => (
-            <div className="meal-entry" key={entry.id}>
-              <button type="button" className="meal-entry__main" aria-label={`Открыть запись ${entry.source_name}`} onClick={() => onSelectEntry(entry)}>
-                <span className="meal-entry__type">{entry.type === "dish" ? <CookingPot aria-hidden="true" /> : <Salad aria-hidden="true" />}</span>
-                <span className="meal-entry__copy">
-                  <strong>{entry.source_name}</strong>
-                  <small>{formatValue(entry.grams, format)} г{!entry.source_available && " · Источник удалён"}</small>
-                </span>
-                <span className="meal-entry__energy">{formatValue(entry.nutrition.energy_kcal, format)} <small>ккал</small></span>
-              </button>
-              <button type="button" className="icon-button icon-button--small" aria-label={`Действия с записью ${entry.source_name}`} onClick={() => onSelectEntry(entry)}><EllipsisVertical aria-hidden="true" /></button>
-            </div>
-          ))}
-        </div>
-      )}
-    </article>
-  );
-}
-
 function RationPageSkeleton({ date, today, onChange }: { date: string; today: string; onChange: (value: string) => void }) {
   return (
     <div className="page page--ration">
@@ -269,6 +212,7 @@ function RationPageSkeleton({ date, today, onChange }: { date: string; today: st
 
 export function RationPage() {
   const { user, profile, initData } = useMiniAppContext();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -279,6 +223,8 @@ export function RationPage() {
   const initialDate = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : today;
   const [date, setDate] = useState(initialDate);
   const [selectedEntry, setSelectedEntry] = useState<RationEntry | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState<{ entry: RationEntry; date: string } | null>(null);
+  const saving = useRef(false);
   const authorized = initData.length > 0;
   const addOpen = location.pathname === "/ration/add";
   const requestedMeal = searchParams.get("meal") as MealType | null;
@@ -292,11 +238,44 @@ export function RationPage() {
     retry: false,
   });
   const day = authorized ? rationQuery.data : emptyDay(date, today, timezone);
+  const moveMutation = useMutation({
+    mutationFn: ({ entry, meal }: { entry: RationEntry; meal: MealType; date: string }) => updateRationEntry(initData, entry.id, { expected_updated_at: entry.updated_at, meal_type: meal }),
+    onMutate: async ({ entry, meal, date: affectedDate }) => {
+      const queryKey = ["ration", affectedDate];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<RationDay>(queryKey);
+      queryClient.setQueryData<RationDay>(queryKey, (current) => current ? moveEntryInDay(current, entry.id, meal) : current);
+      return { previous };
+    },
+    onSuccess: () => showToast("Запись перенесена"),
+    onError: (error, variables, context) => {
+      if (context?.previous) queryClient.setQueryData(["ration", variables.date], context.previous);
+      showToast(error instanceof APIError && error.status === 409 ? "Запись уже изменилась. Рацион обновлён, повторите перенос." : error.message, "error");
+    },
+    onSettled: async (_data, _error, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["ration", variables.date] });
+      saving.current = false;
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: ({ entry }: { entry: RationEntry; date: string }) => deleteRationEntry(initData, entry.id),
+    onSuccess: () => { setDeletingEntry(null); showToast("Запись удалена"); },
+    onError: (error) => showToast(error.message, "error"),
+    onSettled: async (_data, _error, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["ration", variables.date] });
+      saving.current = false;
+    },
+  });
+  const removeEntry = (selection: { entry: RationEntry; date: string }) => {
+    if (saving.current || !authorized) return;
+    saving.current = true;
+    deleteMutation.mutate(selection);
+  };
 
   if (authorized && rationQuery.isPending) {
     return <RationPageSkeleton date={date} today={today} onChange={setDate} />;
   }
-  if (authorized && rationQuery.error) {
+  if (authorized && rationQuery.error && !rationQuery.data) {
     return (
       <div className="page">
         <DateSwitcher value={date} today={today} isFuture={date > today} onChange={setDate} />
@@ -322,7 +301,6 @@ export function RationPage() {
       .find((entry) => entry.id === entryId) ?? null;
     setSelectedEntry(freshEntry);
   };
-  const visibleMeals = day.meals.filter((meal) => meal.type !== "other" || meal.entries.length > 0);
 
   return (
     <div className="page page--ration">
@@ -332,13 +310,19 @@ export function RationPage() {
 
       <section className="ration-meals" aria-labelledby="meals-title">
         <div className="section-heading"><div><h2 id="meals-title">Приёмы пищи</h2><p>{day.entry_count === 0 ? "Рацион пока пуст" : `Всего записей: ${day.entry_count}`}</p></div><Link className="button-primary button-with-icon" to={addTarget}><Plus aria-hidden="true" size={18} />Добавить</Link></div>
-        <div className="meals-list">
-          {visibleMeals.map((meal) => <MealSection key={meal.type} meal={meal} date={date} format={day.number_format} onSelectEntry={setSelectedEntry} />)}
-        </div>
+        <RationMeals key={date} meals={day.meals} date={date} format={day.number_format} formatValue={formatValue} disabled={!authorized || moveMutation.isPending || deleteMutation.isPending} onSelectEntry={setSelectedEntry} onMoveEntry={(entry, meal) => {
+          if (saving.current || !authorized) return;
+          saving.current = true;
+          moveMutation.mutate({ entry, meal, date });
+        }} onDeleteEntry={(entry) => {
+          if (profile.confirm_deletions) setDeletingEntry({ entry, date });
+          else removeEntry({ entry, date });
+        }} />
       </section>
 
-      <RationAddSheet
-        key={`${addOpen}-${date}-${initialMeal}-${initialSource?.type ?? "none"}-${initialSource?.id ?? "none"}`}
+      <AnimatePresence mode="wait" propagate={addOpen}>
+      {addOpen && <RationAddSheet
+        key={`${date}-${initialMeal}-${initialSource?.type ?? "none"}-${initialSource?.id ?? "none"}`}
         open={addOpen}
         date={date}
         initialMeal={initialMeal}
@@ -356,8 +340,10 @@ export function RationPage() {
             navigate(`/ration?date=${today}`, { replace: true });
           }
         }}
-      />
-      <RationEntrySheet
+      />}
+      </AnimatePresence>
+      <AnimatePresence mode="wait" propagate={selectedEntry !== null}>
+      {selectedEntry && <RationEntrySheet
         key={`${selectedEntry?.id ?? "none"}-${selectedEntry?.updated_at ?? "none"}-${date}`}
         entry={selectedEntry}
         currentDate={date}
@@ -369,7 +355,9 @@ export function RationPage() {
         onClose={() => setSelectedEntry(null)}
         onChanged={refreshRation}
         onConflictRefresh={refreshSelectedEntry}
-      />
+      />}
+      </AnimatePresence>
+      <ConfirmDialog open={deletingEntry !== null} title="Удалить запись?" description={`${deletingEntry?.entry.source_name ?? "Запись"} будет удалён из рациона за этот день.`} confirmLabel={deleteMutation.isPending ? "Удаляем..." : "Удалить"} confirmDisabled={deleteMutation.isPending} destructive onClose={() => { if (!deleteMutation.isPending) setDeletingEntry(null); }} onConfirm={() => { if (deletingEntry) removeEntry(deletingEntry); }} />
     </div>
   );
 }
