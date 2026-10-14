@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     miniapp_public_url: AnyHttpUrl = AnyHttpUrl("http://localhost:5173")
     miniapp_host: str = Field(default="127.0.0.1", min_length=1, max_length=255)
     miniapp_port: int = Field(default=8080, ge=1, le=65_535)
-    miniapp_auth_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+    miniapp_auth_max_age_seconds: int = Field(default=43_200, ge=30, le=86_400)
     miniapp_auth_clock_skew_seconds: int = Field(default=30, ge=0, le=300)
     miniapp_max_auth_header_bytes: int = Field(default=8192, ge=512, le=65_536)
     miniapp_max_request_body_bytes: int = Field(

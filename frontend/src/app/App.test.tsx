@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TelegramAdapter } from "../telegram/adapter";
+import * as api from "../api/client";
 import { stopVideoTracks } from "../components/food/camera";
 import { App } from "./App";
 
@@ -28,8 +29,11 @@ function createPreviewAdapter(overrides: Partial<TelegramAdapter> = {}): Telegra
   };
 }
 
-function renderApp(path: string, telegram = createPreviewAdapter()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderApp(
+  path: string,
+  telegram = createPreviewAdapter(),
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={queryClient}>
@@ -43,6 +47,7 @@ function renderApp(path: string, telegram = createPreviewAdapter()) {
 describe("Mini App routes", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
+    vi.restoreAllMocks();
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-mode");
     document.documentElement.removeAttribute("style");
@@ -62,6 +67,68 @@ describe("Mini App routes", () => {
     localStorage.setItem("miniapp:last-section", "weight");
     renderApp("/");
     expect(await screen.findByText("Баланс КБЖУ")).toBeInTheDocument();
+  });
+
+  it.each([401, 503])("keeps the food draft after a background profile failure (%s)", async (status) => {
+    const user: api.CurrentUser = {
+      id: "1", telegram_id: "123", username: null, first_name: "Test",
+      last_name: null, language_code: "ru", timezone: "Europe/Moscow", app_version: "1.1.9",
+    };
+    const profile: api.Profile = {
+      ...user, photo_url: null, number_format: "automatic", after_food_add_action: "open_today",
+      confirm_deletions: true, reminders_enabled: false,
+    };
+    const preferences: api.UIPreferences = {
+      theme_mode: "light", default_section: "food", default_weight_unit: "kg",
+      compact_lists: false, updated_at: "",
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(["current-user"], user);
+    queryClient.setQueryData(["profile"], profile);
+    queryClient.setQueryData(["ui-preferences"], preferences);
+    const error = new api.APIError("Background request failed", status);
+    vi.spyOn(api, "fetchCurrentUser").mockRejectedValue(error);
+    vi.spyOn(api, "fetchProfile").mockRejectedValue(error);
+    vi.spyOn(api, "fetchUIPreferences").mockRejectedValue(error);
+    vi.spyOn(api, "fetchIngredients").mockResolvedValue({ items: [], next_cursor: null });
+    vi.spyOn(api, "fetchFoodFolders").mockResolvedValue([]);
+    const save = vi.spyOn(api, "createIngredient").mockResolvedValue({
+      id: "new-ingredient", name: "Saved draft",
+      nutrition_per_100g: { energy_kcal: "120", protein_g: "0", fat_g: "0", carbs_g: "0" },
+      folder_id: null, package_weight_g: null, photo_url: null,
+      source_name: null, source_url: null, created_at: "", updated_at: "",
+    });
+
+    renderApp("/food/new", createPreviewAdapter({
+      initData: "signed-test-data", isTelegram: true, isDevelopmentPreview: false,
+    }), queryClient);
+    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Saved draft" } });
+    fireEvent.change(screen.getByLabelText("Ккал"), { target: { value: "120" } });
+    for (const label of ["Белки, г", "Жиры, г", "Углеводы, г"]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "0" } });
+    }
+
+    await act(async () => {
+      await Promise.all(["current-user", "profile", "ui-preferences"].map(
+        (key) => queryClient.refetchQueries({ queryKey: [key] }),
+      ));
+    });
+
+    await waitFor(() => expect(queryClient.getQueryState(["profile"])?.status).toBe("error"));
+    expect(screen.getByRole("dialog", { name: "Добавить ингредиент" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Название")).toHaveValue("Saved draft");
+    expect(screen.getByLabelText("Ккал")).toHaveValue("120");
+    expect(screen.queryByText("Не удалось открыть приложение")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Сохранить$/ }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(
+      "signed-test-data",
+      expect.objectContaining({ name: "Saved draft", energy_kcal_per_100g: "120" }),
+      expect.any(String),
+    ));
+    expect(await screen.findByText("Ингредиент добавлен")).toBeInTheDocument();
   });
 
   it("moves through bottom navigation and stores the selected section", () => {

@@ -1,6 +1,6 @@
 import logging
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -135,7 +135,11 @@ async def test_me_rejects_oversized_authorization_header() -> None:
     assert response.status_code == 401
 
 
-async def test_me_syncs_only_signed_telegram_user(monkeypatch) -> None:
+@pytest.mark.parametrize("age_seconds", [0, 360, 7200])
+async def test_me_syncs_only_signed_telegram_user(
+    monkeypatch,
+    age_seconds: int,
+) -> None:
     settings = make_settings()
     app = create_web_app(settings)
     fake_session = Mock(spec=AsyncSession)
@@ -155,13 +159,14 @@ async def test_me_syncs_only_signed_telegram_user(monkeypatch) -> None:
     )
     sync = AsyncMock(return_value=UserSyncResult(user=user, created=False))
     monkeypatch.setattr("app.web.dependencies.UserService.sync_telegram_user", sync)
+    init_data = sign_init_data(
+        auth_date=datetime.now(UTC) - timedelta(seconds=age_seconds),
+    )
 
     async with make_client(app) as client:
         response = await client.get(
             "/api/v1/me",
-            headers={
-                "Authorization": (f"tma {sign_init_data(auth_date=datetime.now(UTC))}")
-            },
+            headers={"Authorization": f"tma {init_data}"},
         )
 
     assert response.status_code == 200

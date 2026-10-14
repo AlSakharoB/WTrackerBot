@@ -139,7 +139,9 @@ export function App({ telegram }: AppProps) {
     return <ProductState busy title="Запускаем WTracker" message="Загружаем профиль и настройки приложения." />;
   }
 
-  const failedQuery = userQuery.error ?? preferencesQuery.error ?? profileQuery.error;
+  // Background refetch failures must not unmount pages with unsaved forms.
+  const failedQuery = [userQuery, preferencesQuery, profileQuery]
+    .find((query) => query.isError && query.data === undefined)?.error;
   if (hasAuthorization && failedQuery) {
     const offline = !navigator.onLine;
     const failureMessage = failedQuery instanceof APIError && failedQuery.correlationId

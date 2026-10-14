@@ -54,7 +54,7 @@ def test_settings_accept_valid_environment() -> None:
     assert str(settings.miniapp_public_url) == "http://localhost:5173/"
     assert settings.miniapp_host == "127.0.0.1"
     assert settings.miniapp_port == 8080
-    assert settings.miniapp_auth_max_age_seconds == 300
+    assert settings.miniapp_auth_max_age_seconds == 43_200
     assert settings.miniapp_auth_clock_skew_seconds == 30
     assert settings.miniapp_max_auth_header_bytes == 8192
     assert settings.miniapp_max_request_body_bytes == 65_536
@@ -94,6 +94,7 @@ def test_settings_normalize_log_level() -> None:
         ({"share_link_ttl_days": "91"}, "less than or equal to 90"),
         ({"share_package_retention_days": "0"}, "greater than or equal to 1"),
         ({"miniapp_auth_max_age_seconds": "29"}, "greater than or equal to 30"),
+        ({"miniapp_auth_max_age_seconds": "86401"}, "less than or equal to 86400"),
     ],
 )
 def test_settings_reject_invalid_values(

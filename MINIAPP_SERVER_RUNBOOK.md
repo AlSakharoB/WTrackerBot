@@ -77,6 +77,11 @@ nano .env  # выставить APP_VERSION из релиза
 ./scripts/deploy.sh
 ```
 
+Для версии 1.1.9 также задайте `MINIAPP_AUTH_MAX_AGE_SECONDS=43200`
+в `.env` (12 часов вместо прежних 5 минут). `sync_env.sh` не заменяет
+старое значение `300`. Срок считается с момента открытия Mini App;
+переключение между приложениями его не сбрасывает и не продлевает.
+
 Deploy создает и проверяет backup, применяет миграции, ожидает health и только
 после smoke удаляет завершенные containers, unused images и build cache.
 Named volumes не удаляются.

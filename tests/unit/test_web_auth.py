@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 import pytest
 
+from app.config import Settings
 from app.web.auth import TelegramInitDataError, TelegramInitDataValidator
 
 BOT_TOKEN = "123456:test-secret-token"
@@ -94,6 +95,46 @@ def test_accept_configured_clock_skew() -> None:
     )
 
     assert result.user.id == 279058397
+
+
+@pytest.mark.parametrize("age_seconds", [360, 7200, 43_200])
+def test_default_window_accepts_returning_to_miniapp(age_seconds: int) -> None:
+    settings = Settings(
+        bot_token=BOT_TOKEN,
+        database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        _env_file=None,
+    )
+    validator = TelegramInitDataValidator(
+        BOT_TOKEN,
+        max_age_seconds=settings.miniapp_auth_max_age_seconds,
+        clock_skew_seconds=settings.miniapp_auth_clock_skew_seconds,
+    )
+
+    result = validator.validate(
+        sign_init_data(auth_date=NOW - timedelta(seconds=age_seconds)),
+        now=NOW,
+    )
+
+    assert result.user.id == 279058397
+
+
+def test_default_window_still_rejects_expired_init_data() -> None:
+    settings = Settings(
+        bot_token=BOT_TOKEN,
+        database_url="postgresql+asyncpg://postgres:postgres@db/nutrition_bot",
+        _env_file=None,
+    )
+    validator = TelegramInitDataValidator(
+        BOT_TOKEN,
+        max_age_seconds=settings.miniapp_auth_max_age_seconds,
+        clock_skew_seconds=settings.miniapp_auth_clock_skew_seconds,
+    )
+
+    with pytest.raises(TelegramInitDataError, match="expired"):
+        validator.validate(
+            sign_init_data(auth_date=NOW - timedelta(hours=12, seconds=1)),
+            now=NOW,
+        )
 
 
 @pytest.mark.parametrize(
