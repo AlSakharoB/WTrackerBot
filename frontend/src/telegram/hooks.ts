@@ -75,18 +75,29 @@ export function useTelegramEnvironment(
   themeMode: ThemeMode,
 ) {
   useEffect(() => {
-    const applyTheme = () => {
-      const effectiveTheme = themeMode === "system" ? telegram.colorScheme : themeMode;
-      document.documentElement.dataset.themeMode = themeMode;
-      document.documentElement.dataset.theme = effectiveTheme;
+    let frame: number | undefined;
+    const syncChromeColor = () => {
       const computedBackground = window.getComputedStyle(document.body).backgroundColor;
       telegram.setChromeColor(
         cssColorToHex(computedBackground)
-          ?? (effectiveTheme === "dark" ? "#111814" : "#f7f9f8"),
+          ?? (document.documentElement.dataset.theme === "dark" ? "#18211d" : "#ffffff"),
       );
     };
+    const applyTheme = () => {
+      document.documentElement.dataset.themeMode = themeMode;
+      document.documentElement.dataset.theme =
+        themeMode === "system" ? telegram.colorScheme : themeMode;
+      syncChromeColor();
+      if (frame !== undefined) window.cancelAnimationFrame?.(frame);
+      // Match the native WebView after the saved theme has been painted.
+      frame = window.requestAnimationFrame?.(syncChromeColor);
+    };
     applyTheme();
-    return telegram.subscribeTheme(applyTheme);
+    const unsubscribe = telegram.subscribeTheme(applyTheme);
+    return () => {
+      unsubscribe();
+      if (frame !== undefined) window.cancelAnimationFrame?.(frame);
+    };
   }, [telegram, themeMode]);
 
   useEffect(() => {

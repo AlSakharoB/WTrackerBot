@@ -172,7 +172,27 @@
 .bottom-sheet header { min-height: 52px; flex: 0 0 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .bottom-sheet h2 { margin: 0; overflow-wrap: anywhere; font-size: 19px; }
 .bottom-sheet__content { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 8px 2px max(20px, max(var(--app-safe-bottom), var(--app-content-safe-bottom))); scroll-padding-bottom: 72px; }
-.bottom-sheet .form-actions, .bottom-sheet .sheet-actions { position: sticky; bottom: 0; z-index: 2; margin-inline: -2px; padding: 12px 2px max(4px, var(--app-content-safe-bottom)); background: var(--color-surface); }
+.bottom-sheet :is(.form-actions, .sheet-actions, .weight-form-actions) {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-inline: -2px;
+  padding: 12px 2px max(4px, var(--app-content-safe-bottom));
+  background: transparent;
+  pointer-events: none;
+}
+.bottom-sheet .weight-form-actions .form-actions { position: static; margin: 0; padding: 0; }
+.bottom-sheet :is(.form-actions, .sheet-actions, .weight-form-actions) :is(button, a) {
+  pointer-events: auto;
+  box-shadow: var(--shadow-tooltip);
+}
+.bottom-sheet :is(.form-actions, .sheet-actions, .weight-form-actions) .button-text {
+  min-height: var(--form-control-height);
+  padding-inline: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
 
 .toast-region {
   position: fixed;

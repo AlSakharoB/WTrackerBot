@@ -160,6 +160,21 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
       };
       const controls = [...document.querySelectorAll("button, a, input, select, textarea, [role=button]")].filter((element) => element.getClientRects().length && getComputedStyle(element).visibility !== "hidden");
       const hitTarget = (element) => element.matches('input[type="checkbox"], input[type="radio"]') && element.closest("label") ? element.closest("label") : element;
+      const floatingActions = [...document.querySelectorAll(".bottom-sheet :is(.form-actions, .sheet-actions, .weight-form-actions)")]
+        .filter((element) => getComputedStyle(element).position === "sticky")
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + 3);
+          const style = getComputedStyle(element);
+          return {
+            background: style.backgroundColor, pointerEvents: style.pointerEvents,
+            paddingBlocksContent: Boolean(hit && element.contains(hit)),
+            buttons: [...element.querySelectorAll("button, a")].map((button) => ({
+              ...bounds(button), pointerEvents: getComputedStyle(button).pointerEvents,
+              background: getComputedStyle(button).backgroundColor,
+            })),
+          };
+        });
       return {
         documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
         documentHeight: document.documentElement.scrollHeight, scrollY,
@@ -177,6 +192,7 @@ async function openPage(section, { theme = "light", state = "populated", viewpor
         dialog: bounds(document.querySelector('[role="alertdialog"]') ?? document.querySelector('[role="dialog"]')),
         toastRegion: bounds(document.querySelector(".toast-region")),
         toastCount: document.querySelectorAll(".toast").length,
+        floatingActions,
         smallControls: controls.filter((element) => { const rect = hitTarget(element).getBoundingClientRect(); return rect.width < 44 || rect.height < 44; }).map((element) => ({ label: element.getAttribute("aria-label") ?? element.textContent.trim().slice(0, 65), ...bounds(hitTarget(element)) })).slice(0, 30),
         smallInputs: controls.filter((element) => element.matches("input:not([type=checkbox]),select,textarea") && parseFloat(getComputedStyle(element).fontSize) < 16).map((element) => ({ id: element.id, fontSize: getComputedStyle(element).fontSize })),
         theme: document.documentElement.dataset.theme, background: getComputedStyle(document.body).backgroundColor,
@@ -271,9 +287,12 @@ try {
       probe.style.backgroundColor = window.__auditChromeColors.background;
       document.body.append(probe);
       const nativeBackground = getComputedStyle(probe).backgroundColor;
-      probe.style.backgroundColor = "var(--color-surface)";
-      const surface = getComputedStyle(probe).backgroundColor;
       probe.remove();
+      const surfaceProbe = document.createElement("span");
+      surfaceProbe.style.backgroundColor = "var(--color-surface)";
+      document.body.append(surfaceProbe);
+      const surface = getComputedStyle(surfaceProbe).backgroundColor;
+      surfaceProbe.remove();
       return {
         top: region.top, bottom: region.bottom, header: parseFloat(document.documentElement.style.getPropertyValue("--app-header-safe-top-js")),
         nativeBackground, surface, body: getComputedStyle(document.body).backgroundColor,
@@ -375,6 +394,47 @@ try {
       await editor.capture("food-editor-discard");
     }
     await editor.close();
+  }
+
+  for (const viewport of [viewports[0], viewports[2], viewports[5]]) {
+    for (const theme of ["light", "dark"]) {
+      const editor = await openPage("food", { theme, viewport });
+      await editor.page.locator(".food-row__content").first().click();
+      await editor.page.locator(".food-editor-details summary").click();
+      const scroller = editor.page.locator(".bottom-sheet__content");
+      for (const position of ["top", "end"]) {
+        await scroller.evaluate((element, position) => {
+          element.scrollTop = position === "top" ? 0 : element.scrollHeight;
+        }, position);
+        const result = await editor.page.evaluate(() => {
+          const viewport = document.querySelector(".bottom-sheet__content").getBoundingClientRect();
+          return [...document.querySelectorAll(".food-editor .sheet-actions button")].map((button) => {
+            const rect = button.getBoundingClientRect();
+            return { label: button.textContent.trim(), visible: rect.top >= viewport.top && rect.bottom <= viewport.bottom + 1 };
+          });
+        });
+        assert(result.length === 2 && result.every((button) => button.visible), "Edit ingredient actions must stay visible while scrolling");
+        diagnostics.push({ check: `floating-food-actions-${position}-${viewport.width}-${theme}`, result });
+        await editor.capture(`food-edit-floating-actions-${position}`);
+      }
+      await editor.close();
+    }
+  }
+
+  for (const theme of ["light", "dark"]) {
+    const settings = await openPage("profile", { theme });
+    for (const [selector, name] of [
+      [".profile-goals button", "nutrition-goal"],
+      [".profile-reminder-row > button", "reminder"],
+    ]) {
+      await settings.page.locator(selector).first().click();
+      await settings.page.getByRole("dialog").waitFor();
+      await settings.capture(`profile-floating-actions-${name}`);
+      await settings.page.locator(".bottom-sheet header button").click();
+    }
+    await settings.page.getByRole("button", { name: /Часовой пояс/ }).click();
+    await settings.capture("profile-floating-actions-timezone");
+    await settings.close();
   }
 
   const longCatalog = await openPage("food", { state: "long-food", viewport: viewports[0] });
@@ -564,6 +624,11 @@ try {
   assert.deepEqual(accessibilityViolations, [], "Accessibility violations detected");
   const layoutDefects = captures.filter(({ metrics }) => metrics.documentWidth > metrics.viewportWidth || metrics.imageFallbacks > 0);
   assert.deepEqual(layoutDefects, [], "Visual layout or image fallback defects detected");
+  const actionDefects = captures.filter(({ metrics }) => metrics.floatingActions.some((row) => (
+    row.background !== "rgba(0, 0, 0, 0)" || row.pointerEvents !== "none" || row.paddingBlocksContent
+    || row.buttons.some((button) => button.pointerEvents !== "auto" || button.background === "rgba(0, 0, 0, 0)")
+  )));
+  assert.deepEqual(actionDefects, [], "Floating actions must have individual backgrounds and allow interaction through the gaps");
   const manifest = {
     revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     browser: browser.version(), browserConnection: process.env.UI_AUDIT_CDP_URL ? "cdp" : "local", platform: process.platform, clock: NOW,
